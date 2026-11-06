@@ -138,6 +138,9 @@ bool wanted(const char *phase) {
     return padded.find(std::string(" ") + phase + " ") != std::string::npos;
 }
 
+// A phase that runs only when the file names it.
+bool named(const char *phase) { return !phases_wanted.empty() && wanted(phase); }
+
 std::string hex(const uint8_t *p, size_t size) {
     std::string s;
     char b[4];
@@ -581,7 +584,7 @@ void phase_host() {
         uint8_t mine[PS_CAPTURE_RECORD_CAPACITY];
         ps_probe_build_record(mine, sizeof mine, &l);
         // A host that sets 10.x's QP (0xc4/0xc8) writes them from the bitrate; the probe sets them per attempt.
-        if (host_shift < 0) memcpy(mine + 0xc4, hook.seen + 0xc4, 8);
+        if (host_shift < 0) memcpy(mine + ps_qp_offset(host_shift), hook.seen + ps_qp_offset(host_shift), 8);
         size_t at = 0;
         while (at < size && mine[at] == hook.seen[at]) at++;
         out("record shift %+td (total %#zx), video out mode %#x; probe builder %s", host_shift, size, video_out_mode,
@@ -943,8 +946,8 @@ void phase_rate() {
     const std::pair<uint32_t, uint32_t> pairs[] = {{0, 0}, {36, 40}, {28, 32}, {20, 24}, {52, 0}};
     for (const auto &q : pairs) {
         Try t = working_try("QP " + std::to_string(q.first) + "/" + std::to_string(q.second));
-        if (q.first) t.words.push_back({0xc4, q.first});
-        if (q.second) t.words.push_back({0xc8, q.second});
+        if (q.first) t.words.push_back({ps_qp_offset(working.shift), q.first});
+        if (q.second) t.words.push_back({ps_qp_offset(working.shift) + 4, q.second});
         t.idr_every = 6;
         const Result r = run(t);
         if (!q.first && r.opened()) found.qp_none = r.bytes;
@@ -966,6 +969,103 @@ void phase_rate() {
         out("SetVideoBitrate %s, 0.5 s in: %s, call rc=%d, %d frames after it%s", to ? "to 20000 kbit/s (opened at 6000)" : "at the opening rate",
             r.opened() ? "opened" : "open failed", r.bitrate_rc, r.frames_after_bitrate, r.read_rc ? ", then the read failed" : "");
         if (r.read_rc) out("  read error raw %#x (0x80c78000: the channel is gone)", static_cast<unsigned>(r.read_raw));
+    }
+}
+
+// Only when firmware_probe.phases names it: for a firmware where neither 13.00's rate fields nor 10.x's QP do anything (9.60). An
+// IDR every 6 frames makes the bytes depend on the encoder's settings even on a quiet screen. A word counts when bytes or the
+// largest frame move by 1.4 times against the baseline.
+void phase_qp_steps() {
+    progress("qp");
+    out("");
+    out("== QP pairs at %#zx, bytes in 1 s with an IDR every 6 frames", ps_qp_offset(working.shift));
+    const std::pair<uint32_t, uint32_t> pairs[] = {{0, 0}, {36, 40}, {30, 34}, {27, 31}, {24, 28}, {21, 25}, {18, 22}, {15, 19}, {12, 16}, {10, 14}, {8, 12}};
+    for (const auto &q : pairs) {
+        Try t = working_try("QP step " + std::to_string(q.first));
+        if (q.first) t.words = {{ps_qp_offset(working.shift), q.first}, {ps_qp_offset(working.shift) + 4, q.second}};
+        t.idr_every = 6;
+        const Result r = run(t);
+        out("  %u/%u: %s, %ld kbit/s, largest frame %d", q.first, q.second, r.opened() ? outcome(r).c_str() : ("fail at " + outcome(r)).c_str(), r.kbit(1000), r.largest);
+    }
+}
+
+void phase_rate_search() {
+    progress("ratesearch");
+    out("");
+    out("== Rate search: bytes in 1 s with an IDR every 6 frames");
+    long baseline = 0;
+    int largest = 0;
+    const auto measure = [](const std::string &label, const Words &words) {
+        Try t = working_try(label);
+        t.words = words;
+        t.idr_every = 6;
+        return run(t);
+    };
+    for (int i = 0; i < 2; i++) {
+        const Result r = measure("search baseline", {});
+        baseline = r.bytes;
+        largest = r.largest;
+    }
+    out("baseline %ld bytes, largest frame %d", baseline, largest);
+    if (baseline <= 0) return;
+    const auto moved = [&](const Result &r) {
+        return r.bytes * 10 > baseline * 14 || r.bytes * 14 < baseline * 10 || r.largest * 10 > largest * 14 || r.largest * 14 < largest * 10;
+    };
+    const auto report_word = [&](const char *what, const Result &r, std::string &changed, std::string &failed) {
+        char h[96];
+        if (!r.opened() || !r.frames) {
+            snprintf(h, sizeof h, " %s(%s %#x)", what, r.opened() ? "no frames" : r.step.c_str(), static_cast<unsigned>(r.raw));
+            failed += h;
+        } else if (moved(r)) {
+            snprintf(h, sizeof h, " %s(%ld bytes, largest %d)", what, r.bytes, r.largest);
+            changed += h;
+        }
+    };
+    const ps_probe_layout l = working_layout();
+    uint8_t record[PS_CAPTURE_RECORD_CAPACITY];
+    const size_t size = ps_probe_build_record(record, sizeof record, &l);
+    const size_t end = std::min(size, static_cast<size_t>(0x198 + working.shift));
+    for (const uint32_t value : {40000000u, 20u}) {
+        std::string changed, failed;
+        for (size_t at = 0x30; at + 4 <= end; at += 4) {
+            if (get32(record, at) || header_high_half(at, l)) continue;
+            char name[24];
+            snprintf(name, sizeof name, "%#zx", at);
+            const Result r = measure("search " + std::to_string(value) + " at " + name, {{at, value}});
+            if (capture_taken) {
+                out("  stopped: the capture stays busy");
+                return;
+            }
+            report_word(name, r, changed, failed);
+        }
+        out("%u in each free word: moved:%s; stopped:%s", value, changed.empty() ? " none" : changed.c_str(), failed.empty() ? " none" : failed.c_str());
+    }
+    std::string changed, failed;
+    for (const uint32_t mode : {1u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 10u, 16u}) {
+        char name[24];
+        snprintf(name, sizeof name, "0xc0=%u", mode);
+        report_word(name, measure(std::string("search ") + name, {{0xc0, mode}}), changed, failed);
+    }
+    out("0xc0 as a mode: moved:%s; stopped:%s", changed.empty() ? " none" : changed.c_str(), failed.empty() ? " none" : failed.c_str());
+    changed.clear();
+    failed.clear();
+    constexpr uint32_t average = 40000000, peak = 44000000, per_frame = static_cast<uint32_t>(uint64_t{peak} * 1001 / 60000);
+    for (const size_t at : {size_t{0xc4}, size_t{0xc8}, size_t{0xcc}, size_t{0xd0}, size_t{0xd4}, size_t{0xd8}, size_t{0xe0}, size_t{0xe8}}) {
+        char name[24];
+        snprintf(name, sizeof name, "%#zx", at);
+        report_word(name, measure(std::string("search rate fields at ") + name, {{at, average}, {at + 4, peak}, {at + 8, per_frame}}), changed, failed);
+    }
+    out("40 Mbit/s as average, peak and bits per frame from: moved:%s; stopped:%s", changed.empty() ? " none" : changed.c_str(),
+        failed.empty() ? " none" : failed.c_str());
+    for (const uint32_t to : {1000000u, 3000000u, 6000000u, 8000000u, 10000000u, 12000000u, 16000000u}) {
+        Try b = working_try("search SetVideoBitrate " + std::to_string(to / 1000));
+        b.read_ms = 1500;
+        b.bitrate_at_ms = 300;
+        b.bitrate_to = to;
+        b.idr_every = 6;
+        const Result r = run(b);
+        out("SetVideoBitrate to %u kbit/s, 0.3 s in: rc=%d, %d frames after it, %ld kbit/s over 1.5 s, largest %d%s", to / 1000, r.bitrate_rc,
+            r.frames_after_bitrate, r.kbit(1500), r.largest, r.read_rc ? ", then the read failed" : "");
     }
 }
 
@@ -1149,6 +1249,8 @@ int main() {
     if (wanted("guards")) phase_guards();
     if (wanted("values")) phase_values();
     if (wanted("rate")) phase_rate();
+    if (named("ratesearch")) phase_rate_search();
+    if (named("qp")) phase_qp_steps();
     if (wanted("codecs")) phase_codecs();
     if (wanted("modes")) phase_modes();
     if (wanted("purposes")) phase_purposes();

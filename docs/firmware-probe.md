@@ -6,7 +6,8 @@ Bericht sagt am Ende, was der Host auf dieser Firmware bräuchte. Validiert am 5
 Stand auf einer PS5 Pro mit 10.20 (Host 0.3.1 lief, die Sonde hielt ihn an und startete ihn wieder) und einer PS5 mit
 10.40 (kein Host lief), je 147 s: Auf beiden fand sie den Datensatz des Hosts (`0x2c8`), den QP in `cfg+0xc4`/`+0xc8`,
 HEVC 8 und 10 Bit nur mit `cfg+0x24` und alle Modi von 360p bis 2160p in beiden Codecs. H.264 kommt auch mit den
-Slice-Feldern von 0.3.1 in 34 Slices je 1080p-Bild (`STATUS.md`, „Firmware-Sonde auf 10.20 und 10.40“).
+Slice-Feldern von 0.3.1 in 34 Slices je 1080p-Bild (`STATUS.md`, „Firmware-Sonde auf 10.20 und 10.40“). Am 6. November 2026 fand
+sie auf 9.60 in 137 s einen Datensatz, den der Host noch nicht kannte (`0x2c0`, `STATUS.md`, „Firmware-Sonde auf 9.60“).
 
 ## Wann sie läuft
 
@@ -100,6 +101,10 @@ Bildschirm ist und was die Konsole abspielt, auf dem Startbildschirm also auch A
 6. **values:** 2 in jedes freie Wort des Encoder-Blocks, Bytes über 1 s gegen die Basis. So fiel auf 10.20 der QP auf.
 7. **rate:** die Bitratenfelder von 13.00, der QP in `0xc4`/`0xc8` (ohne, 36/40, 28/32, 20/24, 52), `SetVideoBitrate`
    mitten im Stream (beim Eröffnungswert und bei 20 Mbit/s).
+   **ratesearch** und **qp** laufen nur, wenn `firmware_probe.phases` sie nennt. `qp` misst QP-Paare von 36/40 bis 8/12 am Offset des
+   Hosts. `ratesearch` dauert einige Minuten: 40000000 und 20 in jedes freie Wort,
+   `0xc0` als Modus, Bitratenfelder an anderen Stellen, `SetVideoBitrate` von 1 bis 16 Mbit/s. Für eine Firmware, auf der weder
+   die Bitratenfelder von 13.00 noch der QP von 10.x wirken (9.60).
 8. **codecs:** H.264 10 Bit, HEVC nur mit `cfg+0x24`, HEVC mit den Remote-Play-Feldern von 13.00, HEVC 10 Bit.
 9. **modes:** 360p60, 540p60, 720p60, 1080p30, 1440p60, 2160p60, in H.264 und HEVC.
 10. **purposes:** Zweck 0–7 und die Ressourcen 180, 177, 185, 175, 182.
