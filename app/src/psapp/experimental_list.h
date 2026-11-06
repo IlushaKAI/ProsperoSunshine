@@ -22,7 +22,8 @@ static inline int ps_exp_small_verified(uint32_t firmware)
     return (firmware & 0xffff0000u) == 0x10200000u || (firmware & 0xffff0000u) == 0x13000000u;
 }
 
-static inline int ps_exp_is_10x(uint32_t firmware) { return (firmware & 0xff000000u) == 0x10000000u; }
+// A capture record without rate fields: 10.x's, and below 10 the still shorter one measured on 9.60 (record_shift in capture.c).
+static inline int ps_exp_short_record(uint32_t firmware) { return firmware < 0x11000000u; }
 static inline int ps_exp_never(uint32_t firmware) { (void)firmware; return 0; }
 
 // X(id, key in sunshine.conf, name in host_diag.log, name in a notice, label on the tile, help on the tile,
@@ -40,8 +41,8 @@ static inline int ps_exp_never(uint32_t firmware) { (void)firmware; return 0; }
     /* 10.x's record has no rate fields: the encoder keeps its own rate whatever is asked for. */                              \
     X(BITRATE, "experimental_high_bitrate", "bitrate", "high bitrate", "150 Mbit/s",                                           \
       "Raises the bitrate cap from 50 to 150 Mbit/s on this firmware. If it fails, 50 until the host restarts.",               \
-      ps_exp_bitrate_verified, ps_exp_is_10x, "No effect on 10.x",                                                             \
-      "The encoder keeps its own rate on firmware 10.x, so this switch would change nothing.")                                 \
+      ps_exp_bitrate_verified, ps_exp_short_record, "No effect here",                                                          \
+      "The encoder keeps its own rate on this firmware, so this switch would change nothing.")                                 \
     /* Verified on 10.20 and 13.00 (13.00 with its own HEVC budgets and a bitrate cap per mode, STATUS.md). */                 \
     X(SMALL, "experimental_small_modes", "small", "below 1080p", "Below 1080p",                                                \
       "Offers 720p, 540p and 360p to clients that ask for less than 1080p. If they fail, 1080p until the host restarts.",      \

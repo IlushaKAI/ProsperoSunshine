@@ -5,6 +5,7 @@
 // together, so a change to configure() that the probe doesn't follow fails there. Portable.
 #ifndef PROSPERO_PROBE_RECORD_H
 #define PROSPERO_PROBE_RECORD_H
+#include "encoder_qp.h"
 #include "experimental.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -16,11 +17,11 @@
 
 typedef struct {
     // Bytes the 0xb8 block and the record differ from 13.00's (0xe0 and 0x2e0); everything 13.00 keeps from 0x198 on
-    // moves by it. 13.00: 0; 13.60: +8; 10.x: -0x18.
+    // moves by it. 13.00: 0; 13.60: +8; 10.x: -0x18; 9.60: -0x20.
     ptrdiff_t shift;
     int inner_headers;           // 13.00's sub-block headers inside the 0xb8 block (0xc0, 0xe0, 0x100, 0x120)
     int rate_fields;             // 13.00's average, peak and bits per frame at 0xc8, 0xcc and 0xd0
-    uint32_t qp_idr, qp_other;   // 10.20's QP fields at 0xc4 and 0xc8, 0 = not written; only without rate fields
+    uint32_t qp_idr, qp_other;   // the QP fields at ps_qp_offset(), 0 = not written; only without rate fields
     uint32_t slices;             // 10.x, H.264: slices per frame at 0x44, with 0x40 and 0x48 on; 0 = not written
     int hevc_fields;             // Remote Play's HEVC fields as configure() writes them on 13.00
     ptrdiff_t hevc_high;         // where those from 0x220 on sit: 0, or the shift for the full variant
@@ -92,8 +93,8 @@ static inline size_t ps_probe_build_record(uint8_t *p, size_t capacity, const ps
         ps_probe_put32(p, 0xcc, l->peak);
         ps_probe_put32(p, 0xd0, (uint32_t)((uint64_t)l->peak * 1001 / (fps * 1000)));
     } else {
-        if (l->qp_idr) ps_probe_put32(p, 0xc4, l->qp_idr);
-        if (l->qp_other) ps_probe_put32(p, 0xc8, l->qp_other);
+        if (l->qp_idr) ps_probe_put32(p, ps_qp_offset(s), l->qp_idr);
+        if (l->qp_other) ps_probe_put32(p, ps_qp_offset(s) + 4, l->qp_other);
     }
     if (l->slices) {
         ps_probe_put32(p, 0x40, 1);

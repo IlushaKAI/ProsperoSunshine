@@ -289,13 +289,17 @@ void ps_capture_set_open_attempts(int attempts) { atomic_store(&open_attempts, a
 // 13.00's rate fields land on other encoder fields there (Start returns 0x80c78000). The measured record also leaves out
 // 13.00's inner sub-block headers, so 10.x writes neither, and the encoder sets no rate. Its QP follows the client's
 // bitrate there instead (encoder_qp.h).
+// Firmware 9.60 (firmware probe): the block is 0x20 bytes smaller, and only that size opens from -0x40 to +0x20. Like 10.x
+// it takes neither inner headers nor rate fields, and its QP sits 0x18 lower (encoder_qp.h). Anything else below 10 gets
+// 9.60's record too: 8.40 refused 13.00's at OpenVideo with 0x81950008 (GitHub issue 23). Not measured there.
 // HEVC is offered on 13.00 and 10.20 (ps_capture_hevc_verified). On 10.20 cfg+0x24 alone starts it, 8 and 10 bit, so
 // Remote Play's fields and the encoder memory are left out on 10.x. On 13.60 its fields would stay at 13.00's offsets;
 // PS_EXP_FULL moves those from 0x198 on with the rest. Where the inner ones sit there is unknown.
 static ptrdiff_t record_shift(void)
 {
     const uint32_t firmware = kernel_get_fw_version();
-    if ((firmware & 0xff000000u) == 0x10000000u) return -0x18;
+    if (firmware < 0x10000000u) return -0x20;
+    if (ps_exp_short_record(firmware)) return -0x18;
     return firmware >= 0x13400000u && firmware < 0x14000000u ? 8 : 0;
 }
 
@@ -335,11 +339,11 @@ void ps_capture_build_config(uint8_t *p, const ps_capture_video_config *c, uint3
         u32(p, 0xcc, (uint32_t)peak);
         u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000)));
     } else {
-        // No rate fields on 10.x: the encoder's QP follows the client's bitrate instead (encoder_qp.h).
+        // No rate fields below 11: the encoder's QP follows the client's bitrate instead (encoder_qp.h).
         const uint32_t average = c->average;
         const ps_qp qp = ps_qp_for_bitrate(average);
-        u32(p, 0xc4, qp.idr);
-        u32(p, 0xc8, qp.other);
+        u32(p, ps_qp_offset(shift), qp.idr);
+        u32(p, ps_qp_offset(shift) + 4, qp.other);
         LOG("firmware 10.x: no rate fields, QP %u/%u for %u kbit/s\n", qp.idr, qp.other, average / 1000);
     }
     if (shift < 0 && c->codec == 0 && !c->no_slices) {

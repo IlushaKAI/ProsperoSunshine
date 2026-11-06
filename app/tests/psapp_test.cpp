@@ -177,6 +177,8 @@ static void experimental_tests()
     CHECK(diag::experimental_no_effect(0x10200006, "experimental_high_bitrate"));
     CHECK(!diag::experimental_needed(0x10400000, "experimental_high_bitrate"));
     CHECK(diag::experimental_no_effect(0x10400000, "experimental_high_bitrate"));
+    CHECK(!diag::experimental_needed(0x09600000, "experimental_high_bitrate"));
+    CHECK(diag::experimental_no_effect(0x09600000, "experimental_high_bitrate"));
     CHECK(!diag::experimental_no_effect(0x10400000, "experimental_large_modes"));
     CHECK(diag::experimental_needed(0x13600000, "experimental_high_bitrate"));
     CHECK(diag::experimental_needed(0x12400000, "experimental_high_bitrate"));

@@ -25,7 +25,7 @@ static int not_active(const char *step, const uint8_t *record)
 
 int main(void)
 {
-    static const uint32_t firmwares[] = {0x12400000u, 0x13000040u, 0x13400000u, 0x13600000u, 0x10200006u, 0x10400000u};
+    static const uint32_t firmwares[] = {0x12400000u, 0x13000040u, 0x13400000u, 0x13600000u, 0x10200006u, 0x10400000u, 0x09600004u};
     static const uint32_t rates[] = {20000000u, 150000000u};
     static const int variants[] = {PS_EXP_STANDARD, PS_EXP_MINIMAL, PS_EXP_FULL};
     int compared = 0;
@@ -49,7 +49,7 @@ int main(void)
                                     0x13c, rates[r], rates[r] / 100 * 112, variants[v]);
                                 const size_t size = ps_probe_build_record(probe, sizeof probe, &l);
                                 // A host that sets 10.x's QP (0xc4/0xc8) picks it from the bitrate; the probe sets it per attempt.
-                                if (record_shift() < 0) memcpy(probe + 0xc4, host + 0xc4, 8);
+                                if (record_shift() < 0) memcpy(probe + ps_qp_offset(record_shift()), host + ps_qp_offset(record_shift()), 8);
                                 if (size != (size_t)(0x2e0 + record_shift()) || memcmp(host, probe, sizeof host)) {
                                     size_t at = 0;
                                     while (at < sizeof host && host[at] == probe[at]) at++;

@@ -4,6 +4,7 @@
 // tests/capture_records.golden, taken from the code before the switches existed. Only 10.x's lines were taken again
 // when its QP came to follow the bitrate (cfg+0xc4 and +0xc8, platform/ps5/encoder_qp.h), and 10.x's H.264 lines when
 // the slice fields came (cfg+0x40, +0x44, +0x48). 13.40's lines are 13.60's, whose record it takes since GitHub issue 14.
+// 9.60's lines came with its own record and QP fields, from the firmware probe.
 // `--hashes` prints those lines, `--full` the records themselves, for a byte-wise comparison with another build.
 #include "fake_avcap.h"
 
@@ -27,7 +28,7 @@ static void hex(const uint8_t *bytes, size_t size)
 
 int main(int argc, char **argv)
 {
-    static const uint32_t firmwares[] = {0x12400000u, 0x13000040u, 0x13400002u, 0x13600000u, 0x10200006u, 0x10400000u};
+    static const uint32_t firmwares[] = {0x12400000u, 0x13000040u, 0x13400002u, 0x13600000u, 0x10200006u, 0x10400000u, 0x09600000u};
     static const uint32_t rates[] = {20000000u, 150000000u};
     const int hashes = argc > 1 && !strcmp(argv[1], "--hashes"), full = argc > 1 && !strcmp(argv[1], "--full");
     FILE *golden = hashes || full ? NULL : fopen(GOLDEN, "r");

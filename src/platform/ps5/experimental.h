@@ -45,7 +45,7 @@ static inline void ps_exp_init(ps_experiment *e, uint32_t firmware, const int sw
     memset(e, 0, sizeof *e);
     for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++) e->on[i] = switches[i] && ps_exp_counts(i, firmware);
     // 10.x's validator refuses 13.00's inner fields (docs/re/hevc.md), and configure() leaves them out there: both are the same.
-    e->last_variant = ps_exp_is_10x(firmware) ? PS_EXP_MINIMAL : PS_EXP_FULL;
+    e->last_variant = ps_exp_short_record(firmware) ? PS_EXP_MINIMAL : PS_EXP_FULL;
     e->trial[0].variant = e->trial[1].variant = PS_EXP_MINIMAL;
 }
 
