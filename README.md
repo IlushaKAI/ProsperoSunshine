@@ -2,6 +2,10 @@
 
 ![ProsperoSunshine](docs/images/banner.jpg)
 
+> **This is a fork for firmware 9.60**, on top of [ProsperoSunshine](https://github.com/Darkatek7/ProsperoSunshine) 0.4.0. It adds
+> capture on 9.60 and lets the app work where a title has no `/data`. What was tested is in [CHANGELOG.md](CHANGELOG.md) and
+> [STATUS.md](STATUS.md). Problems on this fork belong here, not in the original project.
+
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 

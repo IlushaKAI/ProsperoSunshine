@@ -559,10 +559,20 @@ Host 0.3.4 mit dem Datensatz `0x2c0`, Angaben aus `sunshine.log`.
 - **Start at boot:** Der Slot `local/prospero-sunshine` startete den Host nach jedem Einschalten.
 - **1440p im Spiel:** Uncharted lief mit `video out mode` `0x44`, ohne das Bit `0x20`. Bei einem Client mit 1440p antwortete das
   System mit einer Ablehnung, der Host lieferte 1080p (HEVC 10 Bit, 17 Slices).
-- **Zwei Abstürze ungeklärt:** Die Konsole ging nach „Save and restart host“ aus und beim nächsten Öffnen der App. Danach ließ es sich
+- **Zwei Abstürze auf 0.3.4 ungeklärt:** Die Konsole ging nach „Save and restart host“ aus und beim nächsten Öffnen der App. Danach ließ es sich
   nicht wiederholen: je 2 Minuten mit leerer Datei, HEVC und HDR, 1440p/4K und allen Schaltern, dann beide Knöpfe. Die Logs enden
   vor dem Absturz. Dieselbe Zeile zu kstuff stand auch in den Läufen ohne Absturz.
 - **`-1` beim Spielstart:** Lag an einem alten Host aus dem Slot des Payload Managers, Datensatz `0x2c8`, `OpenVideo` `0x81950001`.
+- **Auf 0.4.0:** Host mit diesen Änderungen auf 0.4.0 gestartet, Uncharted aus Moonlight für Android gestartet (`Started PPSA05684`),
+  2 Minuten Stream, HEVC HDR, angefragt 118988 kbit/s, geliefert 50000. Die Webseite lief auf 9.60 nicht.
+- **Dritter Absturz:** Die Konsole ging aus, als `host_restart.elf` gesendet wurde, etwa 2 Minuten nachdem Uncharted in derselben Sitzung
+  geschlossen worden war. Die hochgeladenen Dateien hatten schon die richtigen Prüfsummen, `host_restart.log` blieb unverändert, und das
+  Hostlog hat keine Zeile zum Beenden. Nach dem Neustart lief alles. Ursache ungeklärt.
+- **409 bei offenem Titel:** „Not starting PPSA05684: CUSA06534 is still open“, der Client meldete Fehler 409. „PS5 Screen“ startete,
+  das Spiel ließ sich dann an der Konsole öffnen.
+- **DualSense am Telefon:** Laut Besitzer spürbare Trigger-Effekte in Uncharted, DualSense per Bluetooth an einem Android-17-Telefon,
+  Client ist der Artemis-Fork von R3VALATiON (Branch `feature/native-dualsense-adaptive`). Keine Vibration; die Motorwerte waren in
+  dieser Sitzung nicht im Log, ob das Spiel sie setzt, ist also nicht gemessen.
 
 ### Profil je Spiel und eigene Liste (2026-11-04, 10.20, PS5 Pro)
 
