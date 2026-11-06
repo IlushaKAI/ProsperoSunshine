@@ -9,6 +9,7 @@
 #include "src/config.h"
 #include "src/logging.h"
 #include "src/process.h"
+#include <cstdio>
 #include <fstream>
 #include <mutex>
 #include <optional>
@@ -67,6 +68,8 @@ std::vector<ctx_t> all_apps() {
 // every later start until a restart (STATUS.md).
 constexpr auto settings_app = "PPSA47989"sv;
 constexpr auto settings_app_quit = "/data/prosperosunshine/app.quit";
+// Where a title has no /data (9.60), the app sees this one as /app0/app.quit. It may not delete it, so the host does.
+constexpr auto settings_app_quit_install = "/data/homebrew/PPSA47989/app.quit";
 constexpr int launch_mount_busy = static_cast<int>(0x80940033);
 
 // For close_game_on_quit: the game the last session started or found in front, with its app for /resume, and the game
@@ -121,12 +124,17 @@ void wait_for_release(const std::string &id) {
 
 bool settings_app_closed() {
     std::ofstream(settings_app_quit).flush();
+    std::ofstream(settings_app_quit_install).flush();
     char running[16];
-    for (int i = 0; i < 50; i++) {
+    bool closed = false;
+    for (int i = 0; i < 50 && !closed; i++) {
         std::this_thread::sleep_for(100ms);
-        if (ps_title_running(running) <= 0 || settings_app != running) return true;
+        closed = ps_title_running(running) <= 0 || settings_app != running;
     }
-    return false;
+    // Left behind, they would close the app at its next start.
+    std::remove(settings_app_quit);
+    std::remove(settings_app_quit_install);
+    return closed;
 }
 
 // A title other than id that is still open, from the folder the system keeps for each running title. A game opened before the

@@ -27,6 +27,8 @@ bool is_end(const std::string &line)
     return line == "END" || line.rfind("ERR", 0) == 0;
 }
 
+constexpr const char *kNeedsHost = "Start the host first: on this firmware the app reaches its files through it";
+
 bool any_line(const std::string &)
 {
     return true;
@@ -327,12 +329,17 @@ void Host::run()
 // build. Start, restart and autoload all use that one copy.
 void Host::prepare_files()
 {
-    if (!io::make_dirs(kDataDir))
-        hui::sys::log("[PSAPP] cannot create %s", kDataDir);
+    if (!io::sandboxed() && !io::make_dirs(kDataDir))
+        hui::sys::log("[PSAPP] cannot use %s: %s", kDataDir, io::describe_path(kDataDir).c_str());
     const bool bundled = io::exists(kBundledElf);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         state_.bundled_elf = bundled;
+    }
+    if (io::sandboxed())
+    {
+        prepare_through_host();
+        return;
     }
     if (bundled && !io::same_content(kBundledElf, kHostElf))
     {
@@ -349,6 +356,25 @@ void Host::prepare_files()
     {
         const std::string error = sync_slot();
         hui::sys::log("[PSAPP] autoload slot updated: %s", error.empty() ? "ok" : error.c_str());
+    }
+}
+
+// The same where this title has no /data: the host copies what the app carries, and keeps an autoload slot current.
+void Host::prepare_through_host()
+{
+    const io::Exchange install = io::exchange(kControlPort, "INSTALL\n", any_line, 30000);
+    bridged_ = !install.connect_refused;
+    if (!bridged_)
+        return;
+    const std::string answer = install.lines.empty() ? install.error : install.lines.front();
+    hui::sys::log("[PSAPP] no /data here, going through the host; its copy of the ELF: %s", answer.c_str());
+    if (answer.rfind("OK ", 0) != 0)
+        return;
+    const io::Exchange status = io::exchange(kControlPort, "AUTOLOAD\n", any_line, 10000);
+    if (!status.lines.empty() && status_field(status.lines.front(), "list") == "1" && status_field(status.lines.front(), "slot") != "1")
+    {
+        const io::Exchange sync = io::exchange(kControlPort, "AUTOLOAD ON\n", any_line, 20000);
+        hui::sys::log("[PSAPP] autoload slot updated by the host: %s", sync.lines.empty() ? sync.error.c_str() : sync.lines.front().c_str());
     }
 }
 
@@ -404,14 +430,17 @@ void Host::read_files()
             }
         }
     }
+    const bool manager_present = io::exists("/data/pldmgr") || (io::sandboxed() && !io::port_open(kControlPort));
+    const long long host_elf_size = io::file_size(kHostElf);
     std::lock_guard<std::mutex> lock(mutex_);
     state_.files_read = true;
     state_.config = values;
     state_.config_error = error;
     state_.autoload = autoload_on;
     state_.manager_autoload = manager_on;
-    state_.manager_present = io::exists("/data/pldmgr");
-    state_.host_elf_size = io::file_size(kHostElf);
+    // Without /data and without the host nothing is known; do_autoload says what to do.
+    state_.manager_present = manager_present;
+    state_.host_elf_size = host_elf_size;
     state_.paired = paired;
     if (!address.empty())
         state_.address = address;
@@ -471,6 +500,19 @@ void Host::poll()
                 p.name = rest.substr(first + 1);
             }
             pairings.push_back(p);
+        }
+    }
+    // Without /data the files come from the host, so they are read again when it appears.
+    if (io::sandboxed())
+    {
+        if (running && !bridged_)
+        {
+            prepare_files();
+            read_files();
+        }
+        else if (!running)
+        {
+            bridged_ = false;
         }
     }
     // The host's breadcrumbs: small, and the file is there after a crash too.
@@ -563,10 +605,12 @@ bool Host::wait_control(bool open, int timeout_ms)
 
 std::string Host::launch()
 {
-    if (!io::exists(kHostElf))
-        return std::string("no host at ") + kHostElf;
-    hui::sys::log("[PSAPP] sending %s to the ELF loader", kHostElf);
-    const std::string error = io::send_file(kLoaderPort, kHostElf);
+    // The copy in the data folder, or the app's own where this title has no /data.
+    const char *elf = !io::sandboxed() && io::exists(kHostElf) ? kHostElf : kBundledElf;
+    if (!io::exists(elf))
+        return std::string("no host at ") + kHostElf + " (" + io::describe_path(kHostElf) + ")";
+    hui::sys::log("[PSAPP] sending %s to the ELF loader", elf);
+    const std::string error = io::send_file(kLoaderPort, elf);
     if (!error.empty())
         return error;
     if (!wait_control(true, 30000))
@@ -786,8 +830,18 @@ void Host::do_restart()
 void Host::do_save(const Job &job)
 {
     set_busy("Saving...");
+    if (io::sandboxed() && !io::port_open(kControlPort))
+    {
+        finish(kNeedsHost, false);
+        return;
+    }
     std::string text;
-    io::read_text(kConfPath, &text);
+    // A file that can't be read now must not be replaced by one with only these settings.
+    if (!io::read_text(kConfPath, &text) && errno != ENOENT)
+    {
+        finish("Saving failed: sunshine.conf could not be read", false);
+        return;
+    }
     Config config = Config::parse(text);
     for (const auto &[key, value] : job.values)
     {
@@ -806,7 +860,7 @@ void Host::do_save(const Job &job)
     }
     if (!io::make_dirs(kDataDir))
     {
-        finish(std::string("Cannot create ") + kDataDir, false);
+        finish(std::string("Cannot use ") + kDataDir + ": " + io::describe_path(kDataDir), false);
         return;
     }
     const std::string error = io::write_text(kConfPath, config.text());
@@ -828,6 +882,8 @@ void Host::do_save(const Job &job)
 // The edit as this title may do it. Error text, empty on success.
 std::string Host::autoload_direct(bool on)
 {
+    if (io::sandboxed())
+        return "this title has no /data";
     std::string list;
     const bool have = io::read_text(autoload::kListPath, &list);
     if (!have && io::exists(autoload::kListPath))
@@ -844,7 +900,9 @@ void Host::do_autoload(bool on)
 {
     set_busy(on ? "Turning autoload on..." : "Turning autoload off...");
     std::string error;
-    if (on && !io::exists("/data/pldmgr"))
+    if (io::sandboxed() && !io::port_open(kControlPort))
+        error = kNeedsHost;
+    else if (on && !io::exists("/data/pldmgr"))
         error = "the Payload Manager is not installed (/data/pldmgr is missing)";
     else if (on && !io::exists(kHostElf))
         error = std::string("no host at ") + kHostElf;
@@ -874,6 +932,14 @@ void Host::do_autoload(bool on)
 
 // Everything someone else needs to tell why streaming fails here, fit to paste into a public issue:
 // no addresses, device names, ids or game titles (diag::scrub).
+bool Host::same_as_bundled()
+{
+    if (!io::sandboxed())
+        return io::same_content(kBundledElf, kHostElf);
+    const io::Exchange check = io::exchange(kControlPort, "INSTALL CHECK\n", any_line, 10000);
+    return !check.lines.empty() && check.lines.front() == "OK same";
+}
+
 std::string Host::build_report()
 {
     const Snapshot snap = snapshot();
@@ -899,7 +965,7 @@ std::string Host::build_report()
                      (host_log.version.empty() ? "" : ", version " + host_log.version + ", commit " +
                                                           (host_log.commit.empty() ? "unknown" : host_log.commit)));
     line("Host ELF", std::to_string(snap.host_elf_size) + " bytes, " +
-                         (io::same_content(kBundledElf, kHostElf) ? "same as the app's" : "differs from the app's"));
+                         (same_as_bundled() ? "same as the app's" : "differs from the app's"));
     line("Capture", diag::capture_summary(host_log));
     line("Notice", snap.notice.text.empty() ? "none" : snap.notice.text);
     line("Paired devices", std::to_string(diag::paired_names(snap.running && snap.devices_known, snap.devices, snap.paired).size()));

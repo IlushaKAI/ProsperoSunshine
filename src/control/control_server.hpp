@@ -27,6 +27,7 @@
 //   PROBE                       -> sends <appdata>/firmware_probe.elf to the ELF loader ("OK started" / "ERR ..."), refused
 //                                  while a stream runs; the probe then stops the host and starts it again
 //                                  (docs/firmware-probe.md). For the app's Diagnostics page and a web page later.
+//   FILE <request>, INSTALL     -> the host's files for an app that has no /data, from this console only (file_bridge.hpp)
 //   QUIT                        -> raises the host's shutdown event
 // It has no authentication, so it listens on 127.0.0.1 only (the PS5 app); the empty file
 // <appdata>/control_lan opens it to the LAN for development on trusted networks (ROADMAP P9.1).
@@ -62,10 +63,13 @@ public:
 private:
     // The app asks every two seconds while its page is open; this outlasts a missed turn or two.
     static constexpr std::chrono::seconds report_window{8};
+    // A FILE PUT is the longest request: the app's diagnostic report, in hex.
+    static constexpr size_t largest_request = 2u << 20;
     std::shared_ptr<safe::event_t<bool>> shutdown_;
     DeviceModes modes_;
     std::atomic_bool report_listening_{false};
     std::atomic_bool relisten_{false};
+    std::atomic_bool client_local_{true};
     std::atomic<std::chrono::steady_clock::rep> report_until_{0};
     std::string handle_locked(const std::string &line, Caller caller);
     std::mutex mutex_;

@@ -10,6 +10,9 @@ namespace psapp::io
 {
 
 // ---- files ----
+// Where a title has no /data (9.60), paths under /data go through the host instead: the files src/control/file_bridge.hpp
+// lists, while the host runs. Then copy_file and same_content don't reach them, and send_file never does.
+bool sandboxed();
 bool read_text(const std::string &path, std::string *out, std::size_t max_bytes = 1u << 20);
 // Writes path.tmp, then renames it over path. Returns an error text, empty on success.
 std::string write_text(const std::string &path, const std::string &data);

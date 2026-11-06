@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "control/control_server.hpp"
 #include "control/autoload_host.hpp"
+#include "control/file_bridge.hpp"
 #include "control/stream_list.hpp"
 #include "host_control.hpp"
 #include "sunshine/video_ps5.hpp"
@@ -222,6 +223,13 @@ std::string ControlServer::handle_locked(const std::string &line, Caller caller)
         BOOST_LOG(info) << "Control: autoload "sv << action;
         return autoload_host::set(action == "ON");
     }
+    if (command == "FILE" || command == "INSTALL") {
+        // For the app on the console only: not for the web page, and not over the LAN switch.
+        if (caller != Caller::app || !client_local_) return "ERR local clients only";
+        std::string rest;
+        std::getline(in >> std::ws, rest);
+        return command == "FILE" ? file_bridge::file(rest) : file_bridge::install(rest == "CHECK");
+    }
     if (command == "RELISTEN") {
         relisten_ = true;
         return "OK";
@@ -339,13 +347,17 @@ void ControlServer::run(std::stop_token stop) {
     while (!stop.stop_requested()) {
         pollfd pfd{listener, POLLIN, 0};
         if (poll(&pfd, 1, 250) <= 0) continue;
-        const int client = accept(listener, nullptr, nullptr);
+        sockaddr_in peer{};
+        socklen_t peer_size = sizeof peer;
+        const int client = accept(listener, reinterpret_cast<sockaddr *>(&peer), &peer_size);
         if (client < 0) {
             std::this_thread::sleep_for(100ms);
             continue;
         }
+        client_local_ = peer.sin_addr.s_addr == htonl(INADDR_LOOPBACK);
+        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
         std::string buffer;
-        char chunk[256];
+        char chunk[16384];
         // One client at a time; requests are short and rare.
         while (!stop.stop_requested()) {
             pollfd cfd{client, POLLIN, 0};
@@ -358,9 +370,13 @@ void ControlServer::run(std::stop_token stop) {
                 buffer.erase(0, nl + 1);
                 if (!line.empty() && line.back() == '\r') line.pop_back();
                 const std::string answer = handle(line) + '\n';
-                send(client, answer.data(), answer.size(), 0);
+                for (size_t sent = 0; sent < answer.size();) {
+                    const ssize_t count = send(client, answer.data() + sent, answer.size() - sent, 0);
+                    if (count <= 0) break;
+                    sent += static_cast<size_t>(count);
+                }
             }
-            if (buffer.size() > 4096) break;
+            if (buffer.size() > largest_request) break;
         }
         close(client);
     }

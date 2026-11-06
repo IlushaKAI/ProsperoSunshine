@@ -2,6 +2,7 @@
 #include "app/psapp/io.hpp"
 
 #include "app/psapp/diag.hpp"
+#include "app/psapp/file_wire.hpp"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -95,11 +96,63 @@ int connect_loopback(std::uint16_t port, int timeout_ms)
     return fd;
 }
 
+constexpr std::uint16_t kHostPort = 47995;
+
+bool here(const std::string &path)
+{
+    struct stat info{};
+    return ::stat(path.c_str(), &info) == 0;
+}
+
+bool through_host(const std::string &path)
+{
+    return path.rfind("/data/", 0) == 0 && sandboxed();
+}
+
+// The host's one-line answer, or what stood in its way.
+std::string ask_host(const std::string &request, int timeout_ms)
+{
+    const Exchange reply = exchange(kHostPort, request + "\n", [](const std::string &) { return true; }, timeout_ms);
+    if (!reply.lines.empty())
+        return reply.lines.front();
+    return reply.connect_refused ? "ERR the host is not running" : "ERR " + reply.error;
+}
+
+// "OK file <size> <mode>" or "OK dir 0 <mode>", split up. False with the host's answer in *answer otherwise.
+bool host_stat(const std::string &path, bool *folder, long long *size, std::string *mode, std::string *answer)
+{
+    *answer = ask_host("FILE STAT " + path, 3000);
+    char kind[8] = {0}, bits[8] = {0};
+    long long bytes = 0;
+    if (std::sscanf(answer->c_str(), "OK %7s %lld %7s", kind, &bytes, bits) != 3)
+        return false;
+    *folder = std::strcmp(kind, "dir") == 0;
+    *size = bytes;
+    *mode = bits;
+    return true;
+}
+
 } // namespace
+
+bool sandboxed()
+{
+    static const bool value = !here("/data/homebrew") && !here("/data/prosperosunshine");
+    return value;
+}
 
 bool read_text(const std::string &path, std::string *out, std::size_t max_bytes)
 {
     out->clear();
+    if (through_host(path))
+    {
+        const std::string answer = ask_host("FILE GET " + path + " " + std::to_string(max_bytes), 15000);
+        if (answer.rfind("OK", 0) != 0)
+        {
+            errno = answer == "ERR missing" ? ENOENT : EIO;
+            return false;
+        }
+        return file_wire::from_hex(answer.size() > 3 ? std::string_view(answer).substr(3) : std::string_view(), out);
+    }
     std::FILE *file = std::fopen(path.c_str(), "rb");
     if (file == nullptr)
         return false;
@@ -121,6 +174,11 @@ bool read_text(const std::string &path, std::string *out, std::size_t max_bytes)
 
 std::string write_text(const std::string &path, const std::string &data)
 {
+    if (through_host(path))
+    {
+        const std::string answer = ask_host("FILE PUT " + path + " " + file_wire::to_hex(data), 15000);
+        return answer == "OK" ? std::string() : answer;
+    }
     const std::string temporary = path + ".tmp";
     const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd < 0)
@@ -188,6 +246,13 @@ std::string copy_file(const std::string &src, const std::string &dst)
 
 long long file_size(const std::string &path)
 {
+    if (through_host(path))
+    {
+        bool folder = false;
+        long long size = -1;
+        std::string mode, answer;
+        return host_stat(path, &folder, &size, &mode, &answer) && !folder ? size : -1;
+    }
     struct stat info{};
     if (::stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode))
         return -1;
@@ -221,17 +286,30 @@ bool same_content(const std::string &a, const std::string &b)
 
 bool exists(const std::string &path)
 {
-    struct stat info{};
-    return ::stat(path.c_str(), &info) == 0;
+    if (through_host(path))
+    {
+        bool folder = false;
+        long long size = -1;
+        std::string mode, answer;
+        return host_stat(path, &folder, &size, &mode, &answer);
+    }
+    return here(path);
 }
 
 bool make_dirs(const std::string &path)
 {
+    // The host makes its data folder itself.
+    if (through_host(path))
+    {
+        bool folder = false;
+        long long size = -1;
+        std::string mode, answer;
+        return host_stat(path, &folder, &size, &mode, &answer) && folder;
+    }
+    // Only the result counts: a title may get another error than EEXIST for a parent it can't change, such as /data.
     for (std::size_t slash = path.find('/', 1);; slash = path.find('/', slash + 1))
     {
-        const std::string part = path.substr(0, slash);
-        if (::mkdir(part.c_str(), 0777) != 0 && errno != EEXIST)
-            return false;
+        ::mkdir(path.substr(0, slash).c_str(), 0777);
         if (slash == std::string::npos)
             break;
     }
@@ -241,6 +319,13 @@ bool make_dirs(const std::string &path)
 
 std::string open_error(const std::string &path)
 {
+    if (through_host(path))
+    {
+        bool folder = false;
+        long long size = -1;
+        std::string mode, answer;
+        return host_stat(path, &folder, &size, &mode, &answer) ? std::string() : answer;
+    }
     const int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0)
         return diag::errno_name(errno);
@@ -250,6 +335,15 @@ std::string open_error(const std::string &path)
 
 std::string describe_path(const std::string &path)
 {
+    if (through_host(path))
+    {
+        bool folder = false;
+        long long size = -1;
+        std::string mode, answer;
+        if (!host_stat(path, &folder, &size, &mode, &answer))
+            return "this title has no /data; the host says: " + answer;
+        return std::string("through the host: ") + (folder ? "folder" : "file size=" + std::to_string(size)) + " mode=" + mode;
+    }
     struct stat info{};
     if (::stat(path.c_str(), &info) != 0)
         return errno == ENOENT ? std::string("missing") : "stat " + diag::errno_name(errno);
@@ -330,7 +424,7 @@ Exchange exchange(std::uint16_t port, const std::string &request, bool (*last_li
         }
         if (ready <= 0)
             continue;
-        char chunk[512];
+        char chunk[16384];
         const ssize_t n = ::recv(fd, chunk, sizeof chunk, 0);
         if (n <= 0)
         {

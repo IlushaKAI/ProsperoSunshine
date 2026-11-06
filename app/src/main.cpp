@@ -35,6 +35,8 @@ namespace
 
 constexpr const char *kAssets = "/app0/assets";
 constexpr const char *kQuitFile = "/data/prosperosunshine/app.quit";
+// Where a title has no /data (9.60); the host removes it.
+constexpr const char *kInstallQuitFile = "/app0/app.quit";
 
 bool load_font(hui::gfx::Renderer &renderer, const char *name, hui::gfx::Font *font, hui::ui::FontRef *ref)
 {
@@ -163,7 +165,7 @@ int main()
         if (frames % 60 == 0)
         {
             struct stat info{};
-            if (::stat(kQuitFile, &info) == 0)
+            if (::stat(kQuitFile, &info) == 0 || ::stat(kInstallQuitFile, &info) == 0)
             {
                 ::unlink(kQuitFile);
                 sys::log("[PSAPP] closing: quit file");

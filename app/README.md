@@ -109,7 +109,7 @@ The third row, **Experimental**, is for testers on firmware where a function isn
 alike. Cross flips a switch; off removes the
 key. As with the other settings, **Save and restart host** applies it. Where a function is verified (on 13.00 all of them;
 on 10.20 HEVC, HDR and those modes) its tile says "Verified here", doesn't react, and the host ignores the key. The bitrate tile
-says "No effect on 10.x" on any firmware 10.x and behaves the same, because the encoder keeps its own rate there. HDR also offers HEVC, because it is HEVC at 10 bit. `hevc_mode = 1` in
+says "No effect here" on any firmware below 11.00 and behaves the same, because the encoder keeps its own rate there. HDR also offers HEVC, because it is HEVC at 10 bit. `hevc_mode = 1` in
 the file beats the HEVC and HDR switches. What testers do and post is in the main README, under
 [Testing other firmware](../README.md#testing-other-firmware); what the host does is in `docs/firmware-porting.md` (German). A
 function that fails is off until the host restarts. The notice on Home then says, for example, "Experimental HEVC failed on Firmware
@@ -125,6 +125,13 @@ code), the host's `host_diag.log` and the end of
 public issue. It is saved as `/data/prosperosunshine/diagnostics.txt`. While the page is open and the host
 runs, a phone or PC in the same network can open it at `http://<console-ip>:47996`: a title may not listen on
 the network (bind fails with errno 13), so the host answers there, for a few seconds after each `REPORT`.
+
+## Where a title has no /data
+
+On firmware 9.60 the app's sandbox has no `/data`. The app notices that at its start (`io::sandboxed`) and reaches its files through
+the host instead, over the control socket (`src/control/file_bridge.hpp`): only the files it needs, and only from the console itself.
+So Settings, Start at boot and the report need a running host, and **Start host** sends the ELF the app carries. The host closes
+the app through `/app0/app.quit`.
 
 ## Start at boot: how the Payload Manager is set up
 

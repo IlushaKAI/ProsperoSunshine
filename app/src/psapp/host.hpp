@@ -158,6 +158,9 @@ class Host
     void finish(const std::string &message, bool ok);
 
     void prepare_files();
+    void prepare_through_host();
+    bool same_as_bundled();
+    bool bridged_ = false; // no /data here: a host answered, so its files were read. Worker thread only.
     void read_files();
     std::string build_report();
     void poll();
