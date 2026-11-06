@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Firmware below 10 gets its own capture record.** It got 13.00's, which 9.60 refuses at `OpenVideo` with `0x81950001` and
+  8.40 with `0x81950008` (issue #23). The firmware probe found the size 9.60 opens, `0x2c0`, with frames in H.264 and HEVC up
+  to 1440p, and H.264 1080p60 streamed with sound. Its QP sits lower than on 10.x, and now follows the client's bitrate there too,
+  so the picture is no longer stuck at the encoder's low default. Not tested on 8.40. Firmware 10.x and above keep their records byte for byte.
+- **The app's settings work where a title has no `/data`.** On 9.60 it reported `/data/prosperosunshine` and `/data/pldmgr` as
+  missing, because its sandbox has no `/data`. It now reaches the files it needs through the running host, and only those, so
+  Settings, the Experimental switches, **Start at boot** and the report work there. The host can also close the app before
+  it starts a game. **Start host** sends the host the app carries.
+
 ## 0.4.0 (2026-11-06)
 
 ### Added

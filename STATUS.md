@@ -527,6 +527,43 @@ nachgemessen; die Angaben stammen aus den beiden `report.txt`.
   sie nicht: 360p 23, 540p und 1080p 34, 720p, 1440p und 2160p 45. HEVC: 6, 9, 12, 17, 23, 34. Über 32 Slices lehnen die
   Hardware-Decoder von FFmpeg unter Windows ab.
 
+### Firmware-Sonde auf 9.60 (2026-11-06, PS5, nicht Pro)
+
+`firmware_probe.elf` aus 0.3.4 mit dem Datensatz von 10.x, ein Lauf ohne Optionen, 137 s, ein Titel blieb im Vordergrund. Der
+Host lief, `QUIT` hielt ihn an, am Ende lief er wieder. Die Angaben stammen aus `report.txt`.
+
+- **Datensatz:** Von −`0x40` bis +`0x20` öffnet nur `0x2c0` (−`0x20`), ohne innere Köpfe. `0x2c8` (10.x), `0x2d0`, `0x2e0` (13.00)
+  und `0x2e8` (13.60) lehnt der Validator ab (`0x81950001`), die übrigen Größen enden mit `0x81950008`.
+- **Bilder:** H.264 und HEVC 8/10 Bit (nur `cfg+0x24`) in 360p, 540p, 720p, 1080p und 1440p. 2160p scheitert an `OpenVideo` mit
+  `0x81950008`; `video out mode` war `0x34`, also ohne das 4K-Bit. Slices wie auf 10.x: H.264 1080p 34, HEVC 17.
+- **Rate:** `cfg+0xc4`/`+0xc8` sind hier kein QP: 0/0, 36/40, 28/32, 20/24 und 52/0 ergaben alle 4,6 bis 4,7 Mbit/s bei einem IDR
+  alle 6 Bilder, und 52 scheitert nicht an `Start`. Ohne erzwungene IDR kamen 0,65 bis 0,86 Mbit/s. `0xc0` lässt sich nicht setzen
+  (`0x80c7000d`, auch mit 1 bis 16). Die Phase `ratesearch` fand den QP in `cfg+0xac`/`+0xb0`, 0x18 tiefer als auf 10.x. Startbildschirm,
+  1 s, IDR alle 6 Bilder: ohne 4692 kbit/s, 30/34 4627, 27/31 5061, 24/28 6275, 21/25 8032, 18/22 11016, 15/19 15761, 12/16 19315,
+  10/14 22097, 8/12 28197, größtes Bild von 29007 bis 238665 Bytes. Der Host setzt ihn wie auf 10.x. Im Spiel nicht gemessen; das Bild sah beim Tester etwas besser aus.
+  `SetVideoBitrate`: 1 bis 12 Mbit/s antworten 0 und ändern das größte Bild nicht, 16 und 20 Mbit/s beenden den Kanal (`0x80c78000`).
+- **Validator:** schützt `0x80`, `0x168`, `0x1d8`, `0x2a8`.
+- **Systembibliothek:** `libSceAvcap2` hat 5 Exporte weniger als 13.00 (`ReadVideo3`, `GetImagePasteMemory`,
+  `ChangeScanInResolution`, `GetVideoEncoderCapability`, `RequestSkipFrame`). ResourceArbitrator per NID an den Offsets von 10.20.
+
+### Erster Stream auf 9.60 (2026-11-06, PS5, nicht Pro, Moonlight für Android)
+
+Host 0.3.4 mit dem Datensatz `0x2c0`, Angaben aus `sunshine.log`.
+
+- **Stream:** „PS5 Screen“, H.264 1080p60, angefragt 14988 kbit/s, Ton über Avcap2 (Opus, 2 Kanäle), Controller und Maus, etwa eine
+  Minute. Spielstart aus Moonlight (Uncharted) lief, auch nach dem Einschalten der Konsole. Die Bitrate im Spiel ist nicht gemessen.
+- **Die App sieht `/data` hier nicht:** Sie meldete `/data/pldmgr` als fehlend, obwohl der Ordner da ist. `app.quit` blieb liegen, also
+  schloss sie sich nicht, und der Start scheiterte mit `PPSA47989 is in front` (Antwort 409). `sunshine.conf` blieb leer. Seit
+  `FILE`/`INSTALL` geht sie über den Host: Schalter für HEVC, HDR, 1440p/4K, Surround und „Below 1080p“ landen in `sunshine.conf`,
+  „Save and restart host“ und „Restart host“ liefen, der Bericht wurde gespeichert, `/app0/app.quit` schloss die App in 2 s.
+- **Start at boot:** Der Slot `local/prospero-sunshine` startete den Host nach jedem Einschalten.
+- **1440p im Spiel:** Uncharted lief mit `video out mode` `0x44`, ohne das Bit `0x20`. Bei einem Client mit 1440p antwortete das
+  System mit einer Ablehnung, der Host lieferte 1080p (HEVC 10 Bit, 17 Slices).
+- **Zwei Abstürze ungeklärt:** Die Konsole ging nach „Save and restart host“ aus und beim nächsten Öffnen der App. Danach ließ es sich
+  nicht wiederholen: je 2 Minuten mit leerer Datei, HEVC und HDR, 1440p/4K und allen Schaltern, dann beide Knöpfe. Die Logs enden
+  vor dem Absturz. Dieselbe Zeile zu kstuff stand auch in den Läufen ohne Absturz.
+- **`-1` beim Spielstart:** Lag an einem alten Host aus dem Slot des Payload Managers, Datensatz `0x2c8`, `OpenVideo` `0x81950001`.
+
 ### Profil je Spiel und eigene Liste (2026-11-04, 10.20, PS5 Pro)
 
 Gemessen wie oben (Moonlight für Linux, Hostlog), Host aus `keyboard-mouse-pad` mit Patch 0016 und 0017,
