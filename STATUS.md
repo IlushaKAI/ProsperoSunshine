@@ -573,6 +573,8 @@ Host 0.3.4 mit dem Datensatz `0x2c0`, Angaben aus `sunshine.log`.
 - **DualSense am Telefon:** Laut Besitzer spürbare Trigger-Effekte in Uncharted, DualSense per Bluetooth an einem Android-17-Telefon,
   Client ist der Artemis-Fork von R3VALATiON (Branch `feature/native-dualsense-adaptive`). Keine Vibration; die Motorwerte waren in
   dieser Sitzung nicht im Log, ob das Spiel sie setzt, ist also nicht gemessen.
+- **Vibration in einem PS4-Titel:** Laut Besitzer einfache Vibration in EA Sports UFC 3 am selben DualSense, an einem 8BitDo Ultimate 2C
+  Wireless dagegen keine. Nicht im Log gemessen.
 
 ### Profil je Spiel und eigene Liste (2026-11-04, 10.20, PS5 Pro)
 
