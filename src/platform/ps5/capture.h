@@ -137,6 +137,17 @@ int ps_capture_audio_open_ex(ps_capture *session, uint32_t encoder, uint32_t bit
 // Nonblocking: >0 bytes of one packet, 0 means try again, <0 error. header receives the packet meta.
 int ps_capture_audio_read(ps_capture *session, void *destination, size_t capacity, uint8_t header[0x10]);
 int ps_capture_audio_close(ps_capture *session);
+// Controller haptics over the same session (docs/re/haptics.md). The layout of the 0x18-byte config isn't known: words go to
+// offsets 8 to 0x14 after its size, PS_CAPTURE_HAPTIC_RESOURCE stands for the session's ResourceArbitrator id. Returns the
+// raw Avcap2 code on failure. Read works like ps_capture_audio_read, with a 0x18-byte header and a capacity of at least 0x808.
+#define PS_CAPTURE_HAPTIC_RESOURCE 0xffffffffu
+int ps_capture_haptic_open(ps_capture *session, const uint32_t words[4], uint8_t flag);
+int ps_capture_haptic_read(ps_capture *session, void *destination, size_t capacity, uint8_t header[0x18]);
+int ps_capture_haptic_close(ps_capture *session);
+// Where sceAvcap2ReadHaptic is, for a dump of the library's code.
+uintptr_t ps_capture_haptic_read_address(ps_capture *session);
+// After a fault in a read: forget the channel without calling into it, a lock in there may still be held.
+void ps_capture_haptic_abandon(ps_capture *session);
 #ifdef __cplusplus
 }
 #endif

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- **Vibration of PS5 games, as rumble (experimental).** PS5 games send their vibration through a haptic channel and leave the classic
+  motors alone, so Moonlight got nothing. With **PS5 game vibration** on, the host reads that channel during a stream and passes its
+  level on as rumble. It is a rough match for a DualSense on the console, since Moonlight has only two motor values. **Vibration
+  strength** and **Trigger knock strength** adjust it, within seconds of saving and without a restart. Tested on 9.60 only.
+
 ### Fixed
 
 - **Firmware below 10 gets its own capture record.** It got 13.00's, which 9.60 refuses at `OpenVideo` with `0x81950001` and

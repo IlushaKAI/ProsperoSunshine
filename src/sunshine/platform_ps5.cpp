@@ -8,6 +8,8 @@
 #include "input/pad_touch.hpp"
 #include "platform/ps5/kbm.h"
 #include "platform/ps5/pad.h"
+#include "platform/ps5/haptic_envelope.hpp"
+#include "platform/ps5/haptic_guard.h"
 #include "platform/ps5/shared_capture.hpp"
 #include "src/config.h"
 #include "src/file_handler.h"
@@ -27,6 +29,9 @@
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -549,6 +554,10 @@ struct input_raw_t {
     bool ps_all_players = false;  // ps_button_all_players: every pad may press PS and Create, not only the host's
     prospero::PadRoles<MAX_GAMEPADS> roles;  // who is the host: a paired device, not a slot (GitHub issue 15)
     std::jthread output_thread;
+    std::jthread haptic_thread;
+    prospero::HapticEnvelope haptics;
+    std::atomic_bool haptics_enabled{false};  // haptic_rumble
+    std::atomic_int knock_percent{70};        // trigger_knock_strength
 };
 
 static void set_motors(input_raw_t &input, int nr, uint8_t large, uint8_t small) {
@@ -567,7 +576,7 @@ static void set_color(input_raw_t &input, int nr, uint8_t r, uint8_t g, uint8_t 
 
 static void set_triggers(input_raw_t &input, int nr, const prospero::TriggerBlock &block) {
     if (input.triggers[nr] == block) return;
-    const auto effects = prospero::map_trigger_effects(block, input.triggers[nr]);
+    const auto effects = prospero::map_trigger_effects(block, input.triggers[nr], input.knock_percent);
     input.triggers[nr] = block;
     static constexpr char digits[] = "0123456789abcdef";
     std::string hex;
@@ -587,6 +596,7 @@ static void set_triggers(input_raw_t &input, int nr, const prospero::TriggerBloc
 static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
     std::array<bool, MAX_GAMEPADS> failed{};
     while (!stop.stop_requested()) {
+        const auto rumble = input->haptics.tick();
         {
             std::lock_guard lock(input->mutex);
             for (int nr = 0; nr < MAX_GAMEPADS; ++nr) {
@@ -600,7 +610,7 @@ static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
                     failed[nr] = true;
                     continue;
                 }
-                set_motors(*input, nr, output.motors[0], output.motors[1]);
+                set_motors(*input, nr, std::max(output.motors[0], rumble[0]), std::max(output.motors[1], rumble[1]));
                 set_color(*input, nr, output.color[0], output.color[1], output.color[2]);
                 prospero::TriggerBlock triggers;
                 std::memcpy(triggers.data(), output.triggers, sizeof output.triggers);
@@ -609,6 +619,243 @@ static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
         }
         std::this_thread::sleep_for(10ms);
     }
+}
+
+// While this file exists the channel stays closed, whatever the app says: the host died or faulted reading it. Delete it to try again.
+static constexpr auto haptic_blocked = "/data/prosperosunshine/haptic_blocked";
+static constexpr auto haptic_dump = "/data/prosperosunshine/haptic_dump.bin";
+static constexpr auto haptic_code = "/data/prosperosunshine/haptic_code.bin";
+// Exists from before the channel opens until it has run for a while. Found at the start, it means the host died with the channel
+// open: then the channel gets blocked, so that one bad try can't break every stream that follows.
+static constexpr auto haptic_attempt = "/data/prosperosunshine/haptic_attempt";
+
+namespace {
+struct haptic_read_call {
+    ps_capture *session;
+    void *destination;
+    std::size_t capacity;
+    uint8_t *header;
+};
+int haptic_read_step(void *argument) {
+    auto *call = static_cast<haptic_read_call *>(argument);
+    return ps_capture_haptic_read(call->session, call->destination, call->capacity, call->header);
+}
+}
+
+// Config words to try, the likeliest first: audio's first block (size, kind, purpose, encoder, resource id) is 0x18 bytes too.
+static std::vector<std::array<uint32_t, 4>> haptic_configs() {
+    constexpr uint32_t id = PS_CAPTURE_HAPTIC_RESOURCE;
+    std::vector<std::array<uint32_t, 4>> configs;
+    for (const uint32_t purpose : {2u, 0u, 1u, 3u})
+        for (const uint32_t encoder : {0u, 1u, 2u, 3u}) configs.push_back({0, purpose, encoder, id});
+    configs.push_back({id, 0, 0, 0});
+    configs.push_back({0, id, 0, 0});
+    configs.push_back({0, 0, id, 0});
+    configs.push_back({2, 0, 0, id});
+    return configs;
+}
+
+// Reads the haptic channel during a stream and hands its level to poll_pad_output as rumble. Games made for the PS5 send their
+// vibration only this way; Moonlight has no channel for it, but it has the two motors.
+static void load_vibration_settings(input_raw_t &input) {
+    // Sunshine doesn't know these keys. Read again whenever the file changes, so the app's Save takes effect within seconds, in a
+    // running stream too.
+    const auto settings = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
+    const auto percent = [&](const char *key, int fallback, int largest) {
+        const auto found = settings.find(key);
+        return found == settings.end() ? fallback : std::clamp(std::atoi(found->second.c_str()), 0, largest);
+    };
+    const auto rumble = settings.find("haptic_rumble");
+    input.haptics_enabled = rumble != settings.end() && rumble->second == "1";
+    input.haptics.set_strength(percent("haptic_rumble_strength", 100, 200));
+    input.knock_percent = percent("trigger_knock_strength", 70, 100);
+    BOOST_LOG(info) << "PS5 input: vibration from the haptic channel "sv << (input.haptics_enabled ? "on"sv : "off"sv) << " at "sv
+                    << percent("haptic_rumble_strength", 100, 200) << "%, trigger knock "sv << input.knock_percent.load() << '%';
+}
+
+static void poll_haptics(std::stop_token stop, input_raw_t *input) {
+    std::shared_ptr<prospero::SharedCapture> shared;
+    unsigned generation = 0;
+    bool open = false, gave_up = false;
+    std::optional<std::pair<std::array<uint32_t, 4>, uint8_t>> working;
+    std::vector<uint8_t> packet(0x10000);
+    alignas(16) uint8_t header[0x400];  // only 0x18 are known; room in case the call writes more
+    FILE *dump = nullptr;
+    prospero::HapticSplitter splitter;
+    bool code_saved = false, faulted = false, attempt_open = false;
+    auto opened_at = std::chrono::steady_clock::now();
+    auto settings_checked = opened_at;
+    std::filesystem::file_time_type settings_written{};
+    std::error_code attempt_ec;
+    if (std::filesystem::exists(haptic_attempt, attempt_ec)) {
+        BOOST_LOG(warning) << "PS5 haptics: the host stopped during the last try, the channel stays closed"sv;
+        std::ofstream(haptic_blocked).flush();
+        std::filesystem::remove(haptic_attempt, attempt_ec);
+    }
+    const auto attempt_over = [&] {
+        if (!attempt_open) return;
+        std::error_code ec;
+        std::filesystem::remove(haptic_attempt, ec);
+        attempt_open = false;
+    };
+    long dumped = 0, logged = 0, packets = 0, bytes = 0;
+    int smallest = 0, largest = 0;
+    float peak_low = 0, peak_high = 0;
+    auto reported = std::chrono::steady_clock::now();
+
+    const auto try_open = [&](ps_capture *s) {
+        if (generation != shared->generation()) return false;
+        if (working) return ps_capture_haptic_open(s, working->first.data(), working->second) == 0;
+        for (const uint8_t flag : {uint8_t(0), uint8_t(1)}) {
+            for (const auto &words : haptic_configs()) {
+                const int rc = ps_capture_haptic_open(s, words.data(), flag);
+                BOOST_LOG(info) << "PS5 haptics: open "sv << util::hex(words[0]).to_string_view() << ' ' << util::hex(words[1]).to_string_view() << ' '
+                                << util::hex(words[2]).to_string_view() << ' ' << util::hex(words[3]).to_string_view() << " flag "sv << int(flag) << ": "sv
+                                << util::hex(rc).to_string_view();
+                if (rc == 0) {
+                    working = std::make_pair(words, flag);
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    const auto release = [&] {
+        if (open && shared) shared->exclusive([&](ps_capture *s) { return generation == shared->generation() ? ps_capture_haptic_close(s) : 0; });
+        open = false;
+        shared.reset();
+    };
+
+    while (!stop.stop_requested()) {
+        bool pad = false;
+        {
+            std::lock_guard lock(input->mutex);
+            for (const auto *candidate : input->pads) pad = pad || candidate;
+        }
+        std::error_code ec;
+        const auto checked_now = std::chrono::steady_clock::now();
+        if (checked_now - settings_checked >= 2s) {
+            settings_checked = checked_now;
+            std::error_code time_ec;
+            const auto written = std::filesystem::last_write_time(config::sunshine.config_file, time_ec);
+            if (!time_ec && written != settings_written) {
+                settings_written = written;
+                load_vibration_settings(*input);
+            }
+        }
+        if (!pad || !input->haptics_enabled || (!open && std::filesystem::exists(haptic_blocked, ec))) {
+            release();
+            attempt_over();
+            gave_up = faulted;
+            std::this_thread::sleep_for(500ms);
+            continue;
+        }
+        if (!open) {
+            if (gave_up) {
+                std::this_thread::sleep_for(500ms);
+                continue;
+            }
+            shared = prospero::SharedCapture::attach();
+            if (!shared) {
+                std::this_thread::sleep_for(200ms);
+                continue;
+            }
+            generation = shared->generation();
+            std::ofstream(haptic_attempt).flush();
+            attempt_open = true;
+            open = shared->exclusive(try_open);
+            if (!open) {
+                BOOST_LOG(warning) << "PS5 haptics: the channel didn't open, no more tries in this stream"sv;
+                shared.reset();
+                gave_up = true;
+                attempt_over();
+                continue;
+            }
+            BOOST_LOG(info) << "PS5 haptics: channel open"sv;
+            opened_at = std::chrono::steady_clock::now();
+            if (!code_saved) {
+                code_saved = true;
+                const uintptr_t read = shared->with_session([](ps_capture *s) { return ps_capture_haptic_read_address(s); });
+                // 0x10e0 into the library on 13.00: the dump starts near its base and reaches ReadAudio and the shared reader.
+                ps_haptic_dump_memory(haptic_code, read - 0x1100, 0x4000);
+                BOOST_LOG(info) << "PS5 haptics: ReadHaptic at "sv << util::hex(static_cast<uint64_t>(read)).to_string_view();
+            }
+        }
+        if (generation != shared->generation()) {
+            open = false;
+            shared.reset();
+            continue;
+        }
+        ps_haptic_fault fault{};
+        const int rc = shared->with_session([&](ps_capture *s) {
+            haptic_read_call call{s, packet.data(), packet.size(), header};
+            return ps_haptic_guarded(haptic_read_step, &call, &fault);
+        });
+        if (rc == PS_HAPTIC_FAULT) {
+            BOOST_LOG(warning) << "PS5 haptics: read faulted, signal "sv << fault.signal << " at "sv << util::hex(fault.instruction).to_string_view()
+                               << ", address "sv << util::hex(fault.address).to_string_view() << "; off until the host restarts"sv;
+            shared->exclusive([](ps_capture *s) {
+                ps_capture_haptic_abandon(s);
+                return 0;
+            });
+            std::ofstream(haptic_blocked).flush();
+            open = false;
+            shared.reset();
+            faulted = gave_up = true;
+            attempt_over();
+            continue;
+        }
+        if (attempt_open && std::chrono::steady_clock::now() - opened_at >= 5s) attempt_over();
+        if (rc < 0) {
+            BOOST_LOG(warning) << "PS5 haptics: read failed: "sv << rc;
+            release();
+            std::this_thread::sleep_for(1s);
+            continue;
+        }
+        if (rc > 0) {
+            const auto levels = splitter.process(reinterpret_cast<const float *>(packet.data()), static_cast<std::size_t>(rc) / (2 * sizeof(float)));
+            input->haptics.feed(levels);
+            ++packets;
+            bytes += rc;
+            smallest = smallest ? std::min(smallest, rc) : rc;
+            largest = std::max(largest, rc);
+            peak_low = std::max(peak_low, levels.low);
+            peak_high = std::max(peak_high, levels.high);
+            if (logged < 4 && levels.high > 0.01f) {
+                ++logged;
+                static constexpr char digits[] = "0123456789abcdef";
+                std::string hex;
+                for (int i = 0; i < 0x18 + 32 && i < 0x18 + rc; ++i) {
+                    const uint8_t byte = i < 0x18 ? header[i] : packet[i - 0x18];
+                    hex += digits[byte >> 4];
+                    hex += digits[byte & 15];
+                    if (i == 0x17) hex += ' ';
+                }
+                BOOST_LOG(info) << "PS5 haptics: packet of "sv << rc << " bytes: "sv << hex;
+            }
+            if (dumped < (4 << 20)) {
+                if (!dump) dump = std::fopen(haptic_dump, "wb");
+                if (dump) {
+                    std::fwrite(packet.data(), 1, static_cast<std::size_t>(rc), dump);
+                    std::fflush(dump);
+                    dumped += rc;
+                }
+            }
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (now - reported >= 5s) {
+            if (packets)
+                BOOST_LOG(info) << "PS5 haptics: "sv << packets << " packets, "sv << bytes << " bytes, "sv << smallest << ".."sv << largest
+                                << " each, peak low "sv << peak_low << " high "sv << peak_high;
+            reported = now;
+            packets = bytes = smallest = largest = 0;
+            peak_low = peak_high = 0;
+        }
+        if (rc == 0) std::this_thread::sleep_for(2ms);
+    }
+    release();
+    attempt_over();
+    if (dump) std::fclose(dump);
 }
 
 static void close_keyboard_mouse(input_raw_t &input) {
@@ -632,6 +879,8 @@ static void close_keyboard_mouse(input_raw_t &input) {
 
 void freeInput(input_raw_t *input) {
     if (!input) return;
+    input->haptic_thread.request_stop();
+    if (input->haptic_thread.joinable()) input->haptic_thread.join();
     input->output_thread.request_stop();
     if (input->output_thread.joinable()) input->output_thread.join();
     for (auto *&pad : input->pads) {
@@ -653,7 +902,9 @@ input_t input() {
     raw->ps_all_players = all != settings.end() && all->second == "1";
     BOOST_LOG(info) << (raw->ps_all_players ? "PS5 input: every player can press PS and Create"sv
                                             : "PS5 input: only the host can press PS and Create"sv);
+    load_vibration_settings(*raw);
     raw->output_thread = std::jthread(poll_pad_output, raw);
+    raw->haptic_thread = std::jthread(poll_haptics, raw);
     return input_t{raw};
 }
 

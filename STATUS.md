@@ -573,6 +573,13 @@ Host 0.3.4 mit dem Datensatz `0x2c0`, Angaben aus `sunshine.log`.
 - **DualSense am Telefon:** Laut Besitzer spürbare Trigger-Effekte in Uncharted, DualSense per Bluetooth an einem Android-17-Telefon,
   Client ist der Artemis-Fork von R3VALATiON (Branch `feature/native-dualsense-adaptive`). Keine Vibration; die Motorwerte waren in
   dieser Sitzung nicht im Log, ob das Spiel sie setzt, ist also nicht gemessen.
+- **Haptik als Rumble:** `sceAvcap2OpenHaptic` öffnete mit Zweck 2, Encoder 2 und der RA-Id, `ReadHaptic` lieferte während eines Streams mit
+  virtuellem Pad 47 Pakete je Sekunde zu 2048 Byte, Float Stereo (`docs/re/haptics.md`). In 2:40 Minuten Uncharted standen vorher 5 Trigger-Zeilen
+  und keine Motorzeile im Debug-Log, mit dem Kanal 1271 Motorzeilen. Laut Besitzer gibt es damit Vibration in Uncharted, in der Fassung mit
+  Quadratwurzel aber viel zu stark, fast ein Brummen. Sie kommt bei ihm nur mit „Emulate rumble support with vibration“ im Client; warum, ist
+  ungeklärt, und ob dann der DualSense oder das Telefon vibriert, ist nicht geprüft.
+- **Nicht getestet:** die letzte Fassung mit schwächeren Werten, die Einstellungen `haptic_rumble_strength` und `trigger_knock_strength`
+  in der App und ihre Wirkung im laufenden Stream.
 - **Vibration in einem PS4-Titel:** Laut Besitzer einfache Vibration in EA Sports UFC 3 am selben DualSense, an einem 8BitDo Ultimate 2C
   Wireless dagegen keine. Nicht im Log gemessen.
 

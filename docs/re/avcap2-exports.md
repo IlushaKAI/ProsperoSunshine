@@ -81,7 +81,7 @@ Signaturen aus den Wrappern abgeleitet; Argumente, die nur als 4/8-Byte-Puffer s
 | `pN0hIQZsMzc` | 0xDD0 | `sceAvcap2ReadVideo` | - | `(h, dst, cap, desc*0x70, flags)` AVC-only, kopiert Meta nach desc |
 | `jkv9MlN7gvs` | 0xF00 | `sceAvcap2ReadVideo2` | - | 11-Byte-Thunk: `ReadVideo3(h,dst,cap,desc,NULL,flags)` |
 | `TyUnv8GHF0o` | 0xF10 | `sceAvcap2ReadVideo3` | - | `(h, dst, cap, desc*, extra*0x2DC oder NULL, flags)` neuere Variante, Desc >= 0x88 |
-| `1Xp85wUaVTE` | 0x10E0 | `sceAvcap2ReadHaptic` | - | `(h, dst, cap, hdr*, flags)`, Header 0x18 |
+| `1Xp85wUaVTE` | 0x10E0 | `sceAvcap2ReadHaptic` | - | `(h, buffer, hdr*, flags)`, Paket ab `buffer+8`, höchstens 0x800, Header 0x18 (`haptics.md`) |
 | `8j-pBJmjL7M` | 0x1170 | `sceAvcap2ReadPadSpk` | - | `(h, dst, cap, hdr*, flags)`, Header 0x20 |
 | `ysFbdZrSCMM` | 0x1200 | `sceAvcap2Select` | - | `(n, h*[n], u64* readyMask)` wartet (Event-Flag) bis mind. ein Kanal Daten hat; kein IPC |
 | `S4nvYDibKBw` | 0x1340 | unbekannt | - | `(h, u64*)` Event-Flag-Poll (kein IPC, sceKernelWaitEventFlag Timeout 0) |

@@ -47,7 +47,7 @@ target_include_directories(prospero_capture PUBLIC src)
 target_link_libraries(prospero_capture PUBLIC prospero_ra)
 target_compile_options(prospero_capture PRIVATE ${PROSPERO_WARNINGS})
 
-add_library(prospero_pad STATIC src/platform/ps5/pad.c src/platform/ps5/kbm.c)
+add_library(prospero_pad STATIC src/platform/ps5/pad.c src/platform/ps5/kbm.c src/platform/ps5/haptic_guard.c)
 target_include_directories(prospero_pad PUBLIC src)
 target_compile_options(prospero_pad PRIVATE ${PROSPERO_WARNINGS})
 

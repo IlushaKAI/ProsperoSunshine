@@ -95,7 +95,18 @@ struct TriggerEffects {
     std::array<uint8_t, 10> left, right;
 };
 
-constexpr TriggerEffects map_trigger_effects(const TriggerBlock &block, const TriggerBlock &last) {
+// Effect 0x26 knocks against the finger, with a 3-bit strength for each of ten zones in bytes 2 to 5. The console turns effects down
+// by its own setting; a client writes them to the controller as they are, and a game's full strength is a hard knock. percent is
+// the app's trigger strength.
+inline constexpr uint8_t trigger_effect_knock = 0x26;
+constexpr void soften_knock(uint8_t type, std::array<uint8_t, 10> &data, int percent) {
+    if (type != trigger_effect_knock || percent >= 100) return;
+    uint32_t packed = data[2] | uint32_t(data[3]) << 8 | uint32_t(data[4]) << 16 | uint32_t(data[5]) << 24, softer = packed & 0xc0000000u;
+    for (int zone = 0; zone < 10; ++zone) softer |= (((packed >> (3 * zone) & 7u) * uint32_t(percent) + 50) / 100) << (3 * zone);
+    for (int i = 0; i < 4; ++i) data[2 + i] = uint8_t(softer >> (8 * i));
+}
+
+constexpr TriggerEffects map_trigger_effects(const TriggerBlock &block, const TriggerBlock &last, int knock_percent = 100) {
     TriggerEffects effects{};
     effects.type_left = block[1];
     effects.type_right = block[12];
@@ -103,6 +114,8 @@ constexpr TriggerEffects map_trigger_effects(const TriggerBlock &block, const Tr
         effects.left[i] = block[2 + i];
         effects.right[i] = block[13 + i];
     }
+    soften_knock(effects.type_left, effects.left, knock_percent);
+    soften_knock(effects.type_right, effects.right, knock_percent);
     for (int i = 1; i <= 11; ++i) {
         if (block[i] != last[i]) effects.flags |= trigger_flag_left;
         if (block[11 + i] != last[11 + i]) effects.flags |= trigger_flag_right;

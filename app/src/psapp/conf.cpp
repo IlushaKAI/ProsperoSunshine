@@ -70,6 +70,16 @@ const std::vector<OptionSpec> &option_specs()
         {"ps_button_all_players", "PS for all players",
          "Off: only the host, who plays as the console's user, has PS and Create. On: every player has them, friends online too.",
          OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
+        // The host reads these too (src/sunshine/platform_ps5.cpp), within seconds of a save, in a running stream as well.
+        {"haptic_rumble", "PS5 game vibration",
+         "Turns the vibration of PS5 games into rumble for Moonlight. A rough match for a DualSense on the console.",
+         OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
+        {"haptic_rumble_strength", "Vibration strength (%)",
+         "How strong that vibration is.",
+         OptionKind::number, "100%", {}, 0, 200, 10, 100},
+        {"trigger_knock_strength", "Trigger knock strength (%)",
+         "The knock of a trigger when a game fires. 100 is what the game sends.",
+         OptionKind::number, "70%", {}, 0, 100, 10, 70},
         };
         // The Experimental switches, which the host reads itself (src/sunshine/main_ps5.cpp), not Sunshine.
         for (int i = 0; i < PS_EXP_SWITCH_COUNT; ++i)

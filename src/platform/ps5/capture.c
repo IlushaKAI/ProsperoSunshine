@@ -54,6 +54,11 @@ struct ps_capture {
     // Audio channel (docs/re/avcap2-exports.md, R2); shares the video session's resource grant.
     intptr_t audio;
     int audio_opened, audio_started;
+    // Controller haptics, the channel Remote Play reads (docs/re/haptics.md).
+    int (*open_haptic)(intptr_t *, const void *, uint8_t);
+    int (*read_haptic)(intptr_t, void *, void *, uint32_t);
+    intptr_t haptic;
+    int haptic_opened, haptic_started;
     // HEVC only: encoder memory reserved like Remote Play does.
     int (*free_memory)(void *, void *);
     uint8_t memory[0x40];
@@ -428,6 +433,7 @@ int ps_capture_close(ps_capture *s)
     if (flag) { rc = (expression); SLOG(slot, name " rc=%#x\n", rc); if (rc < 0) failed = 1; } \
 } while (0)
     if (ps_capture_audio_close(s)) failed = 1;
+    if (ps_capture_haptic_close(s)) failed = 1;
     CLEANUP(s->started, s->stop(s->handle), "Stop");
     CLEANUP(s->opened, s->close(s->handle), "Close");
     CLEANUP(s->has_memory, s->free_memory(s->memory, s->memory + 0x20), "free encoder memory");
@@ -598,6 +604,8 @@ static int open_slot(int slot, ps_capture **out)
     s->set_bitrate = (void *)SYM("sceAvcap2SetVideoBitrate");
     s->open_audio = (void *)SYM("sceAvcap2OpenAudio");
     s->read_audio = (void *)SYM("sceAvcap2ReadAudio");
+    s->open_haptic = (void *)SYM("sceAvcap2OpenHaptic");
+    s->read_haptic = (void *)SYM("sceAvcap2ReadHaptic");
 #undef SYM
     if (!init || !mode || !open_video || !start || !s->terminate || !s->stop || !s->close || !s->headers || !s->read)
         goto fail;
@@ -1077,6 +1085,72 @@ int ps_capture_audio_read(ps_capture *s, void *destination, size_t capacity, uin
     if (rc == AGAIN || rc == 0) return 0;
     if (rc < 0 || (size_t)rc > capacity) { SLOG(s->slot, "ReadAudio rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return rc;
+}
+
+int ps_capture_haptic_open(ps_capture *s, const uint32_t words[4], uint8_t flag)
+{
+    if (!s || !s->started || s->haptic_opened || !s->open_haptic || !s->read_haptic) return PS_CAPTURE_ERROR;
+    uint8_t config[0x18] = {0};
+    u64(config, 0, sizeof config);
+    for (int i = 0; i < 4; i++)
+        u32(config, 8 + 4 * (size_t)i, words[i] == PS_CAPTURE_HAPTIC_RESOURCE ? (uint32_t)s->resource : words[i]);
+    int rc = s->open_haptic(&s->haptic, config, flag);
+    SLOG(s->slot, "OpenHaptic %#x %#x %#x %#x flag=%u rc=%#x\n", words[0], words[1], words[2], words[3], flag, rc);
+    if (rc) return rc < 0 ? rc : PS_CAPTURE_ERROR;
+    s->haptic_opened = 1;
+    rc = s->start(s->haptic);
+    SLOG(s->slot, "haptic Start rc=%#x\n", rc);
+    if (rc) {
+        ps_capture_haptic_close(s);
+        return rc < 0 ? rc : PS_CAPTURE_ERROR;
+    }
+    s->haptic_started = 1;
+    return 0;
+}
+
+int ps_capture_haptic_read(ps_capture *s, void *destination, size_t capacity, uint8_t header[0x18])
+{
+    // Unlike ReadAudio it has no size: the packet goes 8 bytes into a buffer of 0x808 (docs/re/haptics.md).
+    if (!s || !s->haptic_started || !destination || !header || capacity < 0x808) return PS_CAPTURE_ERROR;
+    if (!atomic_load(&granted[s->slot]) || atomic_load(&revoked[s->slot])) return PS_CAPTURE_REVOKED;
+    memset(header, 0, 0x18);
+    u64(header, 0, 0x18);
+    int rc = s->read_haptic(s->haptic, destination, header, 1);
+    if (rc == AGAIN || rc == 0) return 0;
+    if (rc < 0 || rc > 0x800) { SLOG(s->slot, "ReadHaptic rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    memmove(destination, (uint8_t *)destination + 8, (size_t)rc);
+    return rc;
+}
+
+uintptr_t ps_capture_haptic_read_address(ps_capture *s)
+{
+    return s ? (uintptr_t)s->read_haptic : 0;
+}
+
+void ps_capture_haptic_abandon(ps_capture *s)
+{
+    if (!s) return;
+    s->haptic_started = s->haptic_opened = 0;
+    s->haptic = 0;
+}
+
+int ps_capture_haptic_close(ps_capture *s)
+{
+    if (!s) return 0;
+    int failed = 0, rc;
+    if (s->haptic_started) {
+        rc = s->stop(s->haptic);
+        SLOG(s->slot, "haptic Stop rc=%#x\n", rc);
+        failed |= rc < 0;
+    }
+    if (s->haptic_opened) {
+        rc = s->close(s->haptic);
+        SLOG(s->slot, "haptic Close rc=%#x\n", rc);
+        failed |= rc < 0;
+    }
+    s->haptic_started = s->haptic_opened = 0;
+    s->haptic = 0;
+    return failed ? PS_CAPTURE_ERROR : 0;
 }
 
 int ps_capture_audio_close(ps_capture *s)

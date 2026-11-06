@@ -5,6 +5,20 @@
 using namespace prospero;
 
 int main() {
+    {
+        // The knock of a shot, as Uncharted sends it: strength 7 in every zone comes out as 5, the rest of the block as it was.
+        TriggerBlock knock{0x03, 0x26, 0xff, 0x03, 0xff, 0xff, 0xff, 0x3f, 0, 0, 1, 0, 0x26, 0xff, 0x03, 0xff, 0xff, 0xff, 0x3f, 0, 0, 1, 0, 0};
+        assert(map_trigger_effects(knock, triggers_off).left[2] == 0xff);  // 100%: as the game sent it
+        const auto soft = map_trigger_effects(knock, triggers_off, 70);
+        assert(soft.type_left == 0x26 && soft.left[0] == 0xff && soft.left[1] == 0x03 && soft.left[8] == 1);
+        const uint32_t packed = soft.left[2] | uint32_t(soft.left[3]) << 8 | uint32_t(soft.left[4]) << 16 | uint32_t(soft.left[5]) << 24;
+        for (int zone = 0; zone < 10; ++zone) assert((packed >> (3 * zone) & 7u) == 5);
+        assert(soft.right == soft.left);
+        // Other effects stay as they are.
+        TriggerBlock resistance{0x03, 0x21, 0xe0, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0x25, 0x14, 0, 1};
+        const auto same = map_trigger_effects(resistance, triggers_off, 70);
+        assert(same.left[0] == 0xe0 && same.left[1] == 0x03 && same.right[0] == 0x14 && same.right[2] == 1);
+    }
     const auto idle = map_gamepad(0, 0, 0, 0, 0, 0, 0);
     assert(idle.buttons == 0);
     assert(idle.lx == 128 && idle.ly == 127 && idle.rx == 128 && idle.ry == 127);  // centre within one step
