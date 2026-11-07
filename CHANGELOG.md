@@ -14,6 +14,12 @@
 - **Trigger force (%)** sets how hard the triggers push back on a DualSense, with the patched Artemis client, within seconds of saving. It
   turns the controller's rumble down with them.
 
+### Changed
+
+- **Stopping the host:** the haptic channel closes first, and the control socket only after the streams and their capture session,
+  so "Restart host" and `host_restart.elf` no longer start a new host while the old one still holds capture. An attempt at the
+  shutdowns seen at "Restart host" during a stream on 9.60; whether it ends them isn't known yet.
+
 ## 0.4.1 (2026-11-07)
 
 ### Added

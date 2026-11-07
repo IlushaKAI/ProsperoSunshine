@@ -572,6 +572,10 @@ Host 0.3.4 mit dem Datensatz `0x2c0`, Angaben aus `sunshine.log`.
   zwei kurzen Sitzungen von 9 und 28 s. Das ist nur eine Kurzprobe.
 - **Vierter Absturz:** Die Konsole ging bei „Restart host“ aus. Im Log lief da noch ein Stream, laut Besitzer von Moonlight auf dem PC, mit offenem
   Haptik-Kanal, und es gibt keine Zeile zum Beenden. Ursache ungeklärt.
+- **„Restart host“ im Stream mit geschlossenem Kanal (`fw960-close`):** Uncharted im Stream, App über das PS-Menü geöffnet (`capture lost (4)` wie
+  beim vierten Absturz), dann „Restart host“. Die Konsole blieb an. Laut Kernel-Log (klogsrv) und Hostlog: Kanal, Ton und Aufnahme geschlossen, alle
+  `rc=0`, `host stopped`, erst danach startete der neue Host, 3 s nach der Zeile zum Beenden; ein neuer Stream lief. Ein einziger Durchlauf: Das
+  zeigt die Reihenfolge, nicht, dass die Abstürze vorbei sind.
 - **409 bei offenem Titel:** „Not starting PPSA05684: CUSA06534 is still open“, der Client meldete Fehler 409. „PS5 Screen“ startete,
   das Spiel ließ sich dann an der Konsole öffnen.
 - **DualSense am Telefon:** Laut Besitzer spürbare Trigger-Effekte in Uncharted, DualSense per Bluetooth an einem Android-17-Telefon,

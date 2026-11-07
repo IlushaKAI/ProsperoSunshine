@@ -14,6 +14,7 @@
 #include "platform/ps5/shared_capture.hpp"
 #include "src/config.h"
 #include "src/file_handler.h"
+#include "src/globals.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
 #include <arpa/inet.h>
@@ -682,6 +683,7 @@ static void load_vibration_settings(input_raw_t &input) {
 }
 
 static void poll_haptics(std::stop_token stop, input_raw_t *input) {
+    const auto shutdown_event = mail::man->event<bool>(mail::shutdown);
     std::shared_ptr<prospero::SharedCapture> shared;
     unsigned generation = 0;
     bool open = false, gave_up = false;
@@ -753,7 +755,10 @@ static void poll_haptics(std::stop_token stop, input_raw_t *input) {
                 load_vibration_settings(*input);
             }
         }
-        if (!pad || !input->haptics_enabled || (!open && std::filesystem::exists(haptic_blocked, ec))) {
+        // A stopping host lets go of the channel first, while its session is whole, and doesn't keep that session open for later.
+        const bool stopping = shutdown_event->peek();
+        if (stopping && open) BOOST_LOG(info) << "PS5 haptics: closing the channel, the host is stopping"sv;
+        if (stopping || !pad || !input->haptics_enabled || (!open && std::filesystem::exists(haptic_blocked, ec))) {
             release();
             attempt_over();
             gave_up = faulted;

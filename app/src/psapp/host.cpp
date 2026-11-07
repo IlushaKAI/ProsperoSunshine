@@ -627,8 +627,8 @@ std::string Host::quit_and_wait()
         return "QUIT: " + reply.error;
     if (!wait_control(false, 20000))
         return "the host did not stop within 20 s";
-    // The control socket closes first; give the rest of the host a moment to let go of its ports
-    // and the capture service.
+    // The control socket closes after the streams and the capture service; give the rest of the
+    // host a moment to let go of its pads.
     sleep_ms(2000);
     return {};
 }

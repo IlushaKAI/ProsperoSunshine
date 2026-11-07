@@ -97,7 +97,8 @@ inline bool busy(std::string &why) {
     return busy_in(answer, listening_now);
 }
 
-// Asks a running host to quit and waits for its stream port to close. True if no host runs afterwards.
+// Asks a running host to quit and waits for its control socket, which closes after the streams and their capture session.
+// True if no host runs afterwards.
 inline bool stop(std::string &detail) {
     if (!running()) {
         detail = "no host running";
@@ -120,8 +121,9 @@ inline bool stop(std::string &detail) {
     close(fd);
     for (char *c = reply; *c; c++)
         if (*c == '\n' || *c == '\r') *c = ' ';
-    const bool down = sent && wait_port(kStreamPort, false, 15) && wait_port(kControlPort, false, 5);
-    detail = std::string("QUIT answered \"") + reply + "\", " + (down ? "host stopped" : "host still listening after 20 s");
+    const bool down = sent && wait_port(kStreamPort, false, 15) && wait_port(kControlPort, false, 20);
+    if (down) usleep(2000000);  // the pads and the rest of the process, as the app waits too (Host::quit_and_wait)
+    detail = std::string("QUIT answered \"") + reply + "\", " + (down ? "host stopped" : "host still listening after 35 s");
     return down;
 }
 

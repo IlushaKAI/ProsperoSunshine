@@ -200,7 +200,6 @@ int main(int argc, char *argv[]) {
         } else {
             BOOST_LOG(info) << "ProsperoSunshine host shutting down"sv;
         }
-        control_thread.request_stop();
         report_thread.request_stop();
         web_thread.request_stop();
         mdns_thread.request_stop();
@@ -208,6 +207,9 @@ int main(int argc, char *argv[]) {
         mdns_thread.join();
         http_thread.join();
         rtsp_thread.join();
+        // The control socket closes last: whoever restarts the host waits for it, and a new host's encoder probe must not meet
+        // this one's capture session.
+        control_thread.request_stop();
         control_thread.join();
         report_thread.join();
         web_thread.join();
