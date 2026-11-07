@@ -579,7 +579,7 @@ Host 0.3.4 mit dem Datensatz `0x2c0`, Angaben aus `sunshine.log`.
   Quadratwurzel aber viel zu stark, fast ein Brummen. Sie kommt bei ihm nur mit „Emulate rumble support with vibration“ im Client; warum, ist
   ungeklärt, und ob dann der DualSense oder das Telefon vibriert, ist nicht geprüft.
 - **Einstellungen:** `haptic_mode`, `haptic_strength`, `trigger_knock_strength` und `trigger_force` stehen laut Besitzer in App und Webseite, und
-  die Stärke wirkte im laufenden Stream. `trigger_force` änderte laut Besitzer nichts Deutliches. Die schwächere Rumble-Fassung
+  die Stärke wirkte im laufenden Stream. `trigger_force` wirkte laut Besitzer mit Client v12 auf die Härte der Trigger. Die schwächere Rumble-Fassung
   (linear, höchstens 128 von 255) ist nach dem Umbau nicht mehr beurteilt worden.
 - **HD nicht fertig:** Mit dem Patch 0022 und dem Client `prospero-ps5` kam die Wellenform an. Mit zwei Rahmen je Bericht (Client v8, Weg über
   48 kHz) fand der Besitzer die Vibration deutlicher und abgestuft, aber mit Mikroaussetzern und bei Dauervibration im Auto wachsender

@@ -11,7 +11,8 @@
   Both apply within seconds of saving, without a restart.
 - **HD in Vibration is unfinished, don't expect it to work.** It sends the waveform to a patched Artemis client for a DualSense over
   Bluetooth. One build gave real HD vibration with a delay that grew; later ones gave none, for a reason not found (`docs/re/haptics.md`).
-- **Trigger force (%)** asks that client for less motor power on the DualSense. The tester felt no clear change.
+- **Trigger force (%)** sets how hard the triggers push back on a DualSense, with the patched Artemis client, within seconds of saving. It
+  turns the controller's rumble down with them.
 
 ### Fixed
 

@@ -51,7 +51,7 @@ Stereo, zwei Rahmen zu 64 Byte je Paket des Kanals, 47 Pakete je Sekunde. Das br
 
 Der Client schickt dem DualSense einen Bericht `0x33` je zwei Rahmen, Teilpaket `0xD2`, also 47 je Sekunde. Mit einem Rahmen je Bericht, 94 je
 Sekunde, wuchs auf einem Galaxy S23 mit Android 17 die Verzögerung, und Trigger reagierten erst nach Sekunden: Sie stehen in derselben Warteschlange.
-Mit `0x5507` meldet der Client alle 2 s seine Zähler, der Host schreibt sie als `Client Bluetooth:` ins Log. Ein Feature-Report als Laufzeitmessung
+Testfassungen des Clients meldeten mit `0x5507` alle 2 s ihre Zähler, der Host schreibt solche Meldungen als `Client Bluetooth:` ins Log. Der veröffentlichte Client sendet das nicht mehr. Ein Feature-Report als Laufzeitmessung
 kostete die Vibration: 65 bis 137 ms in Ruhe, um 300 ms bei Dauervibration, oft keine Antwort binnen 3 s. Er ist wieder entfernt.
 
 ## Stand

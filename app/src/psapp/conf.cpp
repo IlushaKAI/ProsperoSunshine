@@ -81,7 +81,7 @@ const std::vector<OptionSpec> &option_specs()
          "The knock of a trigger when a game fires. 100 is what the game sends.",
          OptionKind::number, "70", {}, 0, 100, 10, 70},
         {"trigger_force", "Trigger force (%)",
-         "Asks a patched Artemis client for less power on a DualSense, its rumble too. Little effect felt so far.",
+         "How hard the triggers push back on a DualSense, with a patched Artemis client. Its rumble follows.",
          OptionKind::number, "60", {}, 0, 100, 10, 60},
         };
         // The Experimental switches, which the host reads itself (src/sunshine/main_ps5.cpp), not Sunshine.
