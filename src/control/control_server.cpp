@@ -3,6 +3,7 @@
 #include "control/autoload_host.hpp"
 #include "control/file_bridge.hpp"
 #include "control/stream_list.hpp"
+#include "control/http_guard.hpp"
 #include "host_control.hpp"
 #include "sunshine/video_ps5.hpp"
 #include "web/web_login.hpp"
@@ -225,7 +226,7 @@ std::string ControlServer::handle_locked(const std::string &line, Caller caller)
     }
     if (command == "FILE" || command == "INSTALL") {
         // For the app on the console only: not for the web page, and not over the LAN switch.
-        if (caller != Caller::app || !client_local_) return "ERR local clients only";
+        if (!file_bridge::allowed(caller == Caller::web, client_local_)) return "ERR local clients only";
         std::string rest;
         std::getline(in >> std::ws, rest);
         return command == "FILE" ? file_bridge::file(rest) : file_bridge::install(rest == "CHECK");
@@ -358,6 +359,7 @@ void ControlServer::run(std::stop_token stop) {
         setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
         std::string buffer;
         char chunk[16384];
+        bool refused = false;
         // One client at a time; requests are short and rare.
         while (!stop.stop_requested()) {
             pollfd cfd{client, POLLIN, 0};
@@ -369,6 +371,12 @@ void ControlServer::run(std::stop_token stop) {
                 std::string line = buffer.substr(0, nl);
                 buffer.erase(0, nl + 1);
                 if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (control::http_request_line(line)) {
+                    // A browser: its POST body would run as commands (http_guard.hpp). Nothing is answered.
+                    BOOST_LOG(warning) << "Control socket: an HTTP request was refused, the connection closed"sv;
+                    refused = true;
+                    break;
+                }
                 const std::string answer = handle(line) + '\n';
                 for (size_t sent = 0; sent < answer.size();) {
                     const ssize_t count = send(client, answer.data() + sent, answer.size() - sent, 0);
@@ -376,7 +384,7 @@ void ControlServer::run(std::stop_token stop) {
                     sent += static_cast<size_t>(count);
                 }
             }
-            if (buffer.size() > largest_request) break;
+            if (refused || buffer.size() > largest_request) break;
         }
         close(client);
     }

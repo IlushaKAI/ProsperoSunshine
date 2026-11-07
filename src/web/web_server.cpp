@@ -3,6 +3,7 @@
 #include "web/web_auth.hpp"
 #include "web/web_cert.hpp"
 #include "web/web_lines.hpp"
+#include "web/web_plain.hpp"
 #include "web/web_report.hpp"
 #include "web/web_login.hpp"
 #include "app/psapp/conf.hpp"
@@ -46,7 +47,90 @@ extern const std::size_t prospero_relaunch_helper_size;
 namespace prospero::web {
 
 namespace {
-using Server = SimpleWeb::Server<SimpleWeb::HTTPS>;
+// Simple-Web-Server's HTTPS server, which looks at a connection's first byte before the TLS handshake: a plain HTTP
+// request gets a redirect to https:// (web_plain.hpp) instead of a closed connection, which browsers show as an empty
+// response (issue 31). Everything else is the library's accept() as it is.
+class PageServer : public SimpleWeb::Server<SimpleWeb::HTTPS> {
+public:
+    using SimpleWeb::Server<SimpleWeb::HTTPS>::Server;
+
+protected:
+    void accept() override {
+        auto connection = create_connection(*io_service, context);
+        acceptor->async_accept(connection->socket->lowest_layer(), [this, connection](const SimpleWeb::error_code &ec) {
+            auto lock = connection->handler_runner->continue_lock();
+            if (!lock) return;
+            if (ec != SimpleWeb::error::operation_aborted) this->accept();
+            if (ec) return;
+            SimpleWeb::error_code option_ec;
+            connection->socket->lowest_layer().set_option(boost::asio::ip::tcp::no_delay(true), option_ec);
+            connection->set_timeout(config.timeout_request);
+            auto first = std::make_shared<unsigned char>(0);
+            connection->socket->next_layer().async_receive(
+                boost::asio::buffer(first.get(), 1), boost::asio::socket_base::message_peek,
+                [this, connection, first](const SimpleWeb::error_code &ec, std::size_t bytes) {
+                    auto lock = connection->handler_runner->continue_lock();
+                    if (!lock) return;
+                    if (ec || bytes == 0) return connection->cancel_timeout();
+                    if (starts_tls(*first)) return handshake(connection);
+                    answer_plain(connection);
+                });
+        });
+    }
+
+private:
+    void handshake(const std::shared_ptr<Connection> &connection) {
+        auto session = std::make_shared<Session>(config.max_request_streambuf_size, connection);
+        connection->socket->async_handshake(boost::asio::ssl::stream_base::server, [this, session](const SimpleWeb::error_code &ec) {
+            session->connection->cancel_timeout();
+            auto lock = session->connection->handler_runner->continue_lock();
+            if (!lock) return;
+            if (!ec) this->read(session);
+            else if (this->on_error) this->on_error(session->request, ec);
+        });
+    }
+
+    // Reads the request head (at most 4 KiB, within the request timeout), answers and closes. The internet gets nothing,
+    // as on the page itself.
+    void answer_plain(const std::shared_ptr<Connection> &connection) {
+        auto head = std::make_shared<boost::asio::streambuf>(4096);
+        boost::asio::async_read_until(
+            connection->socket->next_layer(), *head, "\r\n\r\n",
+            [this, connection, head](const SimpleWeb::error_code &, std::size_t) {
+                auto lock = connection->handler_runner->continue_lock();
+                if (!lock) return;
+                SimpleWeb::error_code ec;
+                const auto remote = connection->socket->lowest_layer().remote_endpoint(ec);
+                bool lan = false;
+                try {
+                    lan = !ec && net::from_address(net::addr_to_normalized_string(remote.address())) != net::WAN;
+                } catch (...) {
+                }
+                if (!lan) return connection->close();
+                const auto &data = head->data();
+                const std::string text(boost::asio::buffers_begin(data), boost::asio::buffers_end(data));
+                auto answer = std::make_shared<std::string>(plain_http_answer(text, config.port));
+                log_plain();
+                boost::asio::async_write(connection->socket->next_layer(), boost::asio::buffer(*answer),
+                                         [connection, answer](const SimpleWeb::error_code &, std::size_t) {
+                                             connection->cancel_timeout();
+                                             connection->close();
+                                         });
+            });
+    }
+
+    // Once a minute at most: a browser may retry, and the log is read from its end.
+    static void log_plain() {
+        static std::atomic<int64_t> last{0};
+        const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        int64_t before = last.load();
+        if (now - before < 60 && before != 0) return;
+        if (!last.compare_exchange_strong(before, now)) return;
+        BOOST_LOG(info) << "Web page: a request with http:// was sent to https://"sv;
+    }
+};
+
+using Server = PageServer;
 using Response = std::shared_ptr<Server::Response>;
 using Request = std::shared_ptr<Server::Request>;
 using json = nlohmann::json;

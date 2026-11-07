@@ -54,6 +54,19 @@ int main() {
     assert(get(data / "sunshine.conf") == "new" && !fs::exists(data / "sunshine.conf.tmp"));
     assert(file("PUT /data/prosperosunshine/sunshine.conf", root) == "OK" && get(data / "sunshine.conf").empty());
     assert(file("PUT /data/prosperosunshine/sunshine.conf xy", root) == "ERR not hex");
+    // Keys that would point the host at other files are refused, comments and other keys pass.
+    const std::string conf_before = get(data / "sunshine.conf");
+    for (const char *line : {"log_path = /data/x", "  cert=/data/c.pem", "file_state = /tmp/s", "credentials_file=x", "pkey = k",
+                             "file_apps = a.json", "global_prep_cmd = []"})
+        assert(file("PUT /data/prosperosunshine/sunshine.conf " + to_hex(std::string("hevc_mode = 1\n") + line + "\n"), root)
+                   .starts_with("ERR not allowed: "));
+    assert(get(data / "sunshine.conf") == conf_before);
+    assert(path_key("# log_path = x\nmin_log_level = debug\nexperimental_hevc = 1\ncertificate_note = 1\n").empty());
+    assert(path_key("cert = x") == "cert" && path_key("\tlog_path=x") == "log_path");
+    assert(file("PUT /data/prosperosunshine/diagnostics.txt " + to_hex("log_path = x\n"), root) == "OK");
+
+    // Only the app's socket on this console: not the web page, not a client over the LAN switch.
+    assert(allowed(false, true) && !allowed(true, true) && !allowed(false, false) && !allowed(true, false));
 
     // Only what is listed: not the keys, not around the list, and nothing the console would run.
     put(data / "credentials/cakey.pem", "secret");

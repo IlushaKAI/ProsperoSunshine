@@ -42,7 +42,11 @@ beim Suchen: `ENABLE_HAPTICS_MAGIC` (`InputStream.c:663-683`) schaltet nur die R
   durch (`session.cpp:267`); mit Flags 0 passiert am Controller vermutlich nichts, der Host muss sie also setzen.
 - Nicht geprüft: Moonlight Web, Forks, Verhalten über Bluetooth, ob der Client die Effekte am Stream-Ende löst.
 
-Nutzen daher: **nur Moonlight PC mit angeschlossenem DualSense.** Am iPhone ändert sich nichts.
+Nutzen daher: **unter den offiziellen Clients nur Moonlight PC mit angeschlossenem DualSense.** Am iPhone ändert sich nichts.
+
+Nachtrag (2026-11-07, Bericht in Issue 30, hier nicht gemessen): Der Besitzer einer PS5 mit 9.60 spürte Trigger-Effekte in
+Uncharted mit einem DualSense per Bluetooth an einem Android-17-Telefon, Client ist der Artemis-Fork von R3VALATiON (Branch
+`feature/native-dualsense-adaptive`).
 
 ## 3. Konsole
 

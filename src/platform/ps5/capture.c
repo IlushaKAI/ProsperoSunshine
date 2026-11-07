@@ -349,7 +349,9 @@ void ps_capture_build_config(uint8_t *p, const ps_capture_video_config *c, uint3
         const ps_qp qp = ps_qp_for_bitrate(average);
         u32(p, ps_qp_offset(shift), qp.idr);
         u32(p, ps_qp_offset(shift) + 4, qp.other);
-        LOG("firmware 10.x: no rate fields, QP %u/%u for %u kbit/s\n", qp.idr, qp.other, average / 1000);
+        const uint32_t firmware = kernel_get_fw_version();
+        LOG("firmware %#x: no rate fields, QP %u/%u at %#zx for %u kbit/s%s\n", firmware, qp.idr, qp.other, ps_qp_offset(shift),
+            average / 1000, firmware < 0x9000000u ? " (record of 9.60, guessed below 9)" : "");
     }
     if (shift < 0 && c->codec == 0 && !c->no_slices) {
         // 10.x cuts H.264 into one slice per macroblock row, 34 at 1080p, and the hardware decoders on Windows take at most

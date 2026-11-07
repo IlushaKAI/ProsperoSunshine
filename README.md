@@ -2,9 +2,9 @@
 
 ![ProsperoSunshine](docs/images/banner.jpg)
 
-> **This is a fork for firmware 9.60**, on top of [ProsperoSunshine](https://github.com/Darkatek7/ProsperoSunshine) 0.4.0. It adds
-> capture on 9.60, lets the app work where a title has no `/data`, and passes the vibration of PS5 games on as rumble (experimental, off by
-> default). HD vibration is in here too, but unfinished.
+> **This is a fork for firmware 9.60**, on top of [ProsperoSunshine](https://github.com/Darkatek7/ProsperoSunshine) 0.4.1, which has taken over
+> capture on 9.60 and the app without `/data`. This fork adds the vibration of PS5 games as rumble (experimental, off by default), trigger
+> strength settings, and HD vibration, which is unfinished.
 > What was tested is in [CHANGELOG.md](CHANGELOG.md) and [STATUS.md](STATUS.md). The Android client used for triggers on a DualSense over
 > Bluetooth is [this fork](https://github.com/IlushaKAI/Artemis-Extended-Native-Wireless-DualSense-Features/tree/prospero-ps5). Problems on
 > this fork belong here, not in the original project.
@@ -12,10 +12,10 @@
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 
-> **Status: 0.4.0 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio, controller, keyboard and mouse input work end to end
+> **Status: 0.4.1 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio, controller, keyboard and mouse input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
 > were tested without errors on firmware 13.00. Firmware 10.20 was tested by a contributor at 1080p. Users report streams on
-> 10.40, 11.40, 12.70, 13.40 and 13.60, not measured here. A second device can join a running stream as another player, in its own codec, dynamic range or resolution up to 1080p. Not every client or game has
+> 9.60, 10.40, 11.40, 12.70, 13.40 and 13.60, not measured here. A second device can join a running stream as another player, in its own codec, dynamic range or resolution up to 1080p. Not every client or game has
 > been tried.
 
 ## How it works
@@ -39,7 +39,9 @@ reverse-engineering notes: `docs/` (German).
 
 - PS5 firmware: **13.00 and 10.20 are tested** (10.20 from 360p to 1080p, where the encoder takes no bitrate; its picture quality
   follows the bitrate set in Moonlight instead, and it sends well below it). Other versions are
-  untested; the host refuses them only if its system-library lookups fail (`docs/firmware-porting.md`, German).
+  untested; the host refuses them only if its system-library lookups fail (`docs/firmware-porting.md`, German). Firmware
+  9.60 has its own capture record, measured by a contributor; there the app can't save settings yet, as a title's sandbox
+  has no `/data` on that console.
 - A homebrew environment with an **ELF loader** (for example one listening on port 9021). The app also needs
   [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), which registers titles from `/data/homebrew/`.
 - No PS VR session while streaming.
@@ -334,7 +336,8 @@ address.
   game open and no stream running. With a game open and a stream running, the console and the game came back in one test, but the
   host stayed unreachable until it was restarted. In an earlier test without this, the console hung after waking and had to be
   switched off at the power button; the cause is unknown. To be safe, turn the console off instead.
-- Adaptive triggers work with Moonlight on a PC and a DualSense; other clients ignore them. Only Teardown has been tested. If a stream
+- Adaptive triggers work with Moonlight on a PC and a DualSense; the other official clients ignore them. A user reports them
+  working with R3VALATiON's Artemis fork on Android and a DualSense over Bluetooth. Only Teardown has been tested. If a stream
   ends during an effect, the trigger stays stiff until you connect again, because Moonlight doesn't reset it.
 - Moonlight can't wake the console. It wakes a host with a Wake-on-LAN packet, and the PS5 ignores those: it only wakes for
   Remote Play's own wake message. The host can't help either, because the console stops it in rest mode. To wake the console

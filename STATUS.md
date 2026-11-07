@@ -686,6 +686,18 @@ alle H.264 1080p60 auf „PS5 Screen“ mit `--no-script`; B, C und A beim zweit
 Nicht geprüft: echtes Moonlight, ein echter DualSense an der Konsole, und ob der Dialog „Wer benutzt diesen Controller?“
 einem Gast den Nutzer des Hosts anbietet.
 
+### Release 0.4.1 auf der Konsole (2026-11-07, 13.00)
+
+App aus `build/app` kopiert und neu registriert, sie zeigt `v01.000.022`; nach „Restart host“ meldet das Kernel-Log
+`version=0.4.1 commit=cd0d808b`, und der Prozess heißt dort und in der Prozessliste `ProsperoSunshine` statt `payload.elf`
+(Issue #32). Testclient, Home-Bildschirm: H.264 und HEVC 1080p je 30 s mit 1793 und 1792 Bildern bei 59,94 fps, fehlerfrei
+dekodiert, ohne Tonfehler. `http://` auf Port 47990 bekommt 302 auf `https://` (Issue #31; vorher leere Antwort, curl
+Fehler 52), ohne Host-Kopfzeile 400. Vor dem Release mit `control_lan` gemessen: Ein POST mit `STATUS` als Inhalt an den
+Steuerport führte auf 0.4.0 `STATUS` aus, nach der Änderung schließt der Host die Verbindung ohne Antwort, `STATUS` und
+`DEVICES` ohne HTTP antworten wie zuvor. Der Datensatz für 9.60 ändert an 13.00 nichts (Golden-Datei, Stream wie oben); auf
+9.60 selbst ist er hier nicht prüfbar, ebenso der Dateizugriff der App über den Host, den nur eine Konsole ohne `/data` in
+der Sandbox eines Titels nutzt.
+
 ### Release 0.4.0 auf der Konsole (2026-11-06, 13.00)
 
 `main` mit PR 27 (Webseite) und 0.3.4 zusammengeführt, App aus `build/app` kopiert und neu registriert, sie zeigt

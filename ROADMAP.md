@@ -1,8 +1,8 @@
 # ProsperoSunshine Roadmap und Umsetzungsplan
 
-Stand: 6. November 2026, nach Release 0.4.0. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
+Stand: 7. November 2026, nach Release 0.4.1. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
-## Stand (6. November 2026, nach Release 0.4.0)
+## Stand (7. November 2026, nach Release 0.4.1)
 
 Seit 0.1.5 sind folgende Releases dazugekommen:
 
@@ -45,8 +45,13 @@ Seit 0.1.5 sind folgende Releases dazugekommen:
 - **0.4.0:**
   - Eine Webseite zur Steuerung des Hosts (Issue #21, PR #27): Status, PIN, Streams, Geräte, Einstellungen, Logs,
     Diagnose, Neustart; von einem Mitwirkenden auf 10.20 und am iPhone getestet.
+- **0.4.1:**
+  - Firmware 9.60: eigener Datensatz und QP-Felder, die App erreicht ihre Dateien über den Host, wo ein Titel kein `/data`
+    hat (Issue #30, aus dem Fork von IlushaKAI, hier nicht prüfbar).
+  - Der Steuerport schließt Verbindungen, die mit einer HTTP-Anfrage beginnen; die Webseite leitet `http://` auf `https://`
+    um (Issue #31); der Prozess heißt `ProsperoSunshine` (Issue #32).
 
-Firmware: 13.00 und 10.20 sind geprüft. 10.40, 11.40, 12.70, 13.40 und 13.60 streamen laut Nutzerberichten (Issues #1, #2, #14, #17, #24), dort aber nicht
+Firmware: 13.00 und 10.20 sind geprüft. 9.60 (Issue #30), 10.40, 11.40, 12.70, 13.40 und 13.60 streamen laut Nutzerberichten (Issues #1, #2, #14, #17, #24), dort aber nicht
 gemessen.
 
 Co-op: Weitere Geräte hängen sich an den laufenden Stream. Ein Tester spielte auf 10.20 mit vier Spielern, auch über das

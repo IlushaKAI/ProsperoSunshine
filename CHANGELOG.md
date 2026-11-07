@@ -14,16 +14,27 @@
 - **Trigger force (%)** sets how hard the triggers push back on a DualSense, with the patched Artemis client, within seconds of saving. It
   turns the controller's rumble down with them.
 
+## 0.4.1 (2026-11-07)
+
+### Added
+
+- **Firmware 9.60:** its own capture record (`0x2c0`) and QP fields (`cfg+0xac`/`+0xb0`), measured with the firmware probe
+  on a PS5 with 9.60, and the probe's opt-in phases `ratesearch` and `qp` that found them. Not tested here; 9.60 stays
+  unverified, and firmware below 9 gets the same record as a guess. Records for 10.x and 13.x are unchanged. Thanks to
+  @IlushaKAI (#30).
+- **The app without `/data`:** where a title's sandbox has no `/data` (seen on 9.60), the app reaches its files through the
+  running host (`FILE` and `INSTALL` on the control socket, from the console itself only, a fixed list of files, no
+  credentials, and `sunshine.conf` without keys that point the host at other files). Thanks to @IlushaKAI.
+
 ### Fixed
 
-- **Firmware below 10 gets its own capture record.** It got 13.00's, which 9.60 refuses at `OpenVideo` with `0x81950001` and
-  8.40 with `0x81950008` (issue #23). The firmware probe found the size 9.60 opens, `0x2c0`, with frames in H.264 and HEVC up
-  to 1440p, and H.264 1080p60 streamed with sound. Its QP sits lower than on 10.x, and now follows the client's bitrate there too,
-  so the picture is no longer stuck at the encoder's low default. Not tested on 8.40. Firmware 10.x and above keep their records byte for byte.
-- **The app's settings work where a title has no `/data`.** On 9.60 it reported `/data/prosperosunshine` and `/data/pldmgr` as
-  missing, because its sandbox has no `/data`. It now reaches the files it needs through the running host, and only those, so
-  Settings, the Experimental switches, **Start at boot** and the report work there. The host can also close the app before
-  it starts a game. **Start host** sends the host the app carries.
+- The control socket closes a connection that starts with an HTTP request line. Before, a web page in the console's
+  browser (or, with `control_lan`, on any PC in the network) could send a POST whose body lines the host ran as
+  commands, such as `WEBLOGIN SET` or `AUTOLOAD`.
+- The web page answers `http://` with a redirect to `https://` on the same address and port. Before, the host closed the
+  connection, and browsers showed an empty response (`ERR_EMPTY_RESPONSE`, #31, thanks to @natkokrasevac).
+- The host's process is called `ProsperoSunshine` instead of `payload.elf`, so the Payload Manager's list of running
+  payloads shows which one it is (#32, thanks to @natkokrasevac).
 
 ## 0.4.0 (2026-11-06)
 

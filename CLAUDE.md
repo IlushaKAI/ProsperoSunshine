@@ -8,7 +8,7 @@ verified state with evidence: `STATUS.md` (both German).
 - `src/sunshine/` – PS5 replacements for Sunshine parts (video, audio, input, process, main).
 - `src/platform/ps5/` – Avcap2 capture (`capture.c`), `SharedCapture`, backend glue.
 - `src/capture/`, `src/video/` – portable logic with unit tests in `tests/`.
-- `src/web/` – the web page (HTTPS on base port + 1, off without a login): `web_auth.hpp`, `web_lines.hpp` portable with
+- `src/web/` – the web page (HTTPS on base port + 1, off without a login): `web_auth.hpp`, `web_lines.hpp`, `web_plain.hpp` (plain HTTP gets a redirect) portable with
   tests in `tests/`; `web_login.cpp`, `web_server.cpp` host-only; `page/` HTML/JS/CSS embedded into the ELF by `CMakeLists.txt`.
 - `patches/<dep>/` – patches applied on top of pinned sources; `deps.lock` pins every source by SHA256.
 - `app/` – the PS5 settings app `PPSA47989` (ps5-homebrew-ui, ShadowMountPlus title folder).
@@ -97,8 +97,8 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
   user selection.
 - Rest mode closes the host's listening sockets and stops its log files; `wait_or_ports_lost` in `main_ps5.cpp` notices
   refused ports and starts the services anew in the same process.
-- Whether a game sends trigger effects: only some do (Teardown yes, GTA III not in the sessions measured), and only Moonlight
-  for PC passes them to a DualSense. See `docs/re/adaptive-triggers.md`.
+- Whether a game sends trigger effects: only some do (Teardown yes, GTA III not in the sessions measured), and among the official clients only
+  Moonlight for PC passes them to a DualSense (a contributor reports R3VALATiON's Artemis fork on Android too, issue 30). See `docs/re/adaptive-triggers.md`.
 - Autoload through the Payload Manager: `/data/pldmgr/autoload.txt`, slot `local/prospero-sunshine`.
 - A title may have no `/data` (9.60): then the app reaches the files listed in `src/control/file_bridge.cpp` through `FILE` and `INSTALL` on
   the control socket, while the host runs, and the host closes it through `/app0/app.quit`.

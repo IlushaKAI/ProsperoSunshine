@@ -85,6 +85,20 @@ std::string stat_line(const fs::path &path) {
 }
 }
 
+std::string path_key(const std::string &conf) {
+    static constexpr std::array denied{"pkey"sv, "cert"sv, "log_path"sv, "file_state"sv, "credentials_file"sv, "file_apps"sv,
+                                       "global_prep_cmd"sv};
+    std::istringstream lines(conf);
+    for (std::string line; std::getline(lines, line);) {
+        const size_t start = line.find_first_not_of(" \t");
+        if (start == std::string::npos || line[start] == '#') continue;
+        const size_t end = line.find_first_of(" \t=", start);
+        const std::string_view key = std::string_view(line).substr(start, end == std::string::npos ? std::string::npos : end - start);
+        if (std::find(denied.begin(), denied.end(), key) != denied.end()) return std::string(key);
+    }
+    return {};
+}
+
 std::string file(const std::string &request, const fs::path &root) {
     std::istringstream in(request);
     std::string action, path;
@@ -94,6 +108,8 @@ std::string file(const std::string &request, const fs::path &root) {
         std::string hex, bytes;
         in >> hex;
         if (!psapp::file_wire::from_hex(hex, &bytes)) return "ERR not hex";
+        if (path.ends_with("/sunshine.conf"))
+            if (const std::string key = path_key(bytes); !key.empty()) return "ERR not allowed: " + key;
         constexpr auto everyone = fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read | fs::perms::group_write |
                                   fs::perms::others_read | fs::perms::others_write;
         return replace_file(under(root, path), bytes, everyone) ? "OK" : "ERR cannot write";
