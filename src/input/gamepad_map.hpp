@@ -106,6 +106,12 @@ constexpr void soften_knock(uint8_t type, std::array<uint8_t, 10> &data, int per
     for (int i = 0; i < 4; ++i) data[2 + i] = uint8_t(softer >> (8 * i));
 }
 
+// The app's trigger force in percent as a DualSense's power reduction: steps of an eighth, and 7 is as far as it goes.
+constexpr int trigger_power_steps(int percent) {
+    const int steps = ((100 - percent) * 8 + 50) / 100;
+    return steps < 0 ? 0 : steps > 7 ? 7 : steps;
+}
+
 constexpr TriggerEffects map_trigger_effects(const TriggerBlock &block, const TriggerBlock &last, int knock_percent = 100) {
     TriggerEffects effects{};
     effects.type_left = block[1];

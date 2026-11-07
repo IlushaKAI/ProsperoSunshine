@@ -10,6 +10,7 @@
 #include "platform/ps5/pad.h"
 #include "platform/ps5/haptic_envelope.hpp"
 #include "platform/ps5/haptic_guard.h"
+#include "src/stream.h"
 #include "platform/ps5/shared_capture.hpp"
 #include "src/config.h"
 #include "src/file_handler.h"
@@ -556,7 +557,9 @@ struct input_raw_t {
     std::jthread output_thread;
     std::jthread haptic_thread;
     prospero::HapticEnvelope haptics;
-    std::atomic_bool haptics_enabled{false};  // haptic_rumble
+    std::atomic_bool haptics_enabled{false};  // haptic_mode is rumble or hd
+    std::atomic_bool haptics_hd{false};       // haptic_mode is hd
+    std::atomic<float> haptics_gain{1.0f};    // haptic_strength
     std::atomic_int knock_percent{70};        // trigger_knock_strength
 };
 
@@ -665,12 +668,17 @@ static void load_vibration_settings(input_raw_t &input) {
         const auto found = settings.find(key);
         return found == settings.end() ? fallback : std::clamp(std::atoi(found->second.c_str()), 0, largest);
     };
-    const auto rumble = settings.find("haptic_rumble");
-    input.haptics_enabled = rumble != settings.end() && rumble->second == "1";
-    input.haptics.set_strength(percent("haptic_rumble_strength", 100, 200));
+    const auto mode = settings.find("haptic_mode");
+    const std::string chosen = mode == settings.end() ? "off" : mode->second;
+    input.haptics_enabled = chosen == "rumble" || chosen == "hd";
+    input.haptics_hd = chosen == "hd";
+    const int strength = percent("haptic_strength", 100, 200);
+    input.haptics.set_strength(strength);
+    input.haptics_gain = static_cast<float>(strength) / 100.0f;
     input.knock_percent = percent("trigger_knock_strength", 70, 100);
-    BOOST_LOG(info) << "PS5 input: vibration from the haptic channel "sv << (input.haptics_enabled ? "on"sv : "off"sv) << " at "sv
-                    << percent("haptic_rumble_strength", 100, 200) << "%, trigger knock "sv << input.knock_percent.load() << '%';
+    const int force = percent("trigger_force", 60, 100);
+    stream::dualsense_set_power_reduction(prospero::trigger_power_steps(force));
+    BOOST_LOG(info) << "PS5 input: vibration "sv << chosen << " at "sv << strength << "%, trigger knock "sv << input.knock_percent.load() << "%, trigger force "sv << force << '%';
 }
 
 static void poll_haptics(std::stop_token stop, input_raw_t *input) {
@@ -682,6 +690,8 @@ static void poll_haptics(std::stop_token stop, input_raw_t *input) {
     alignas(16) uint8_t header[0x400];  // only 0x18 are known; room in case the call writes more
     FILE *dump = nullptr;
     prospero::HapticSplitter splitter;
+    std::array<uint8_t, prospero::kHapticBlockBytes> hd_block{};
+    bool sending_hd = false;
     bool code_saved = false, faulted = false, attempt_open = false;
     auto opened_at = std::chrono::steady_clock::now();
     auto settings_checked = opened_at;
@@ -813,8 +823,21 @@ static void poll_haptics(std::stop_token stop, input_raw_t *input) {
             continue;
         }
         if (rc > 0) {
-            const auto levels = splitter.process(reinterpret_cast<const float *>(packet.data()), static_cast<std::size_t>(rc) / (2 * sizeof(float)));
-            input->haptics.feed(levels);
+            const auto *samples = reinterpret_cast<const float *>(packet.data());
+            const auto frames = std::min(prospero::kHapticFrames, static_cast<std::size_t>(rc) / (2 * sizeof(float)));
+            const auto levels = splitter.process(samples, frames);
+            // The waveform itself where the client takes it, else as much of it as two motor values can hold.
+            const bool hd = input->haptics_hd && stream::dualsense_haptics_wanted();
+            if (hd != sending_hd) {
+                sending_hd = hd;
+                BOOST_LOG(info) << "PS5 haptics: "sv << (hd ? "waveform to the client"sv : "rumble"sv);
+            }
+            if (hd && frames == prospero::kHapticFrames) {
+                prospero::haptic_block(samples, input->haptics_gain.load(), hd_block.data());
+                stream::dualsense_haptics_push(hd_block.data());
+            } else {
+                input->haptics.feed(levels);
+            }
             ++packets;
             bytes += rc;
             smallest = smallest ? std::min(smallest, rc) : rc;

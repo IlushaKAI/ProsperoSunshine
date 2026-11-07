@@ -189,7 +189,7 @@ class Screen
     int home_action_ = 0;
     int home_card_ = 0; // the pairing cards, then the streams card (while someone streams), then the paired devices
     int tile_ = 0; // the option tiles, then the four actions under them
-    float tile_amount_[8 + PS_EXP_SWITCH_COUNT + 1 + 4] = {};
+    float tile_amount_[12 + PS_EXP_SWITCH_COUNT + 1 + 4] = {};
     float action_amount_[3] = {};
     float card_amount_[2] = {};
     float devices_amount_ = 0.0f; // the paired devices' focus

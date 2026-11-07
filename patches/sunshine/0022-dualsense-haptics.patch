@@ -1,0 +1,229 @@
+ProsperoSunshine: native DualSense haptics, in the protocol of Apollo Extended
+
+A client that asks with 0x5506 gets an answer and then four-channel PCM blocks in 0x5504, which the platform layer fills from
+the console's haptic channel. Artemis Extended plays them on a DualSense. Clients that do not ask get nothing new.
+
+--- a/src/stream.cpp
++++ b/src/stream.cpp
+@@ -5,7 +5,10 @@
+ 
+ // standard includes
+ #include <array>
++#include <atomic>
++#include <chrono>
+ #include <cstring>
++#include <deque>
+ #include <fstream>
+ #include <future>
+ #include <optional>
+@@ -448,8 +451,8 @@
+      * @param peer Remote endpoint associated with the socket.
+      * @return Network operation status.
+      */
+-    int send(const std::string_view &payload, net::peer_t peer) {
+-      if (auto packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE); enet_peer_send(peer, 0, packet)) {
++    int send(const std::string_view &payload, net::peer_t peer, enet_uint32 flags = ENET_PACKET_FLAG_RELIABLE) {
++      if (auto packet = enet_packet_create(payload.data(), payload.size(), flags); enet_peer_send(peer, 0, packet)) {
+         enet_packet_destroy(packet);
+ 
+         return -1;
+@@ -1183,7 +1186,124 @@
+    *
+    * @param server RTSP server instance handling the request.
+    */
++  // Apollo Extended's native DualSense channel, which Artemis Extended speaks: the client asks with 0x5506 every 2 s, the host
++  // answers with an adaptive-trigger message marked 'B' 'W' 'P', and 0x5504 carries the audio. Moonlight proper never asks, and for
++  // it 0x5504 means player LEDs, so nothing here goes to a client that didn't ask. Apollo sends four channels at 48 kHz every 3 ms.
++  // This host has only haptics, at the controller's own 3 kHz, so it sends them as they are: flag 0x04, 47 small packets a second
++  // instead of 333 large ones, which leaves a phone's radio more time for Bluetooth. A client that takes this is a patched one.
++  constexpr std::uint16_t dualsense_policy_type = 0x5506, dualsense_audio_type = 0x5504;
++
++  /**
++   * @brief One block of native DualSense audio, ahead of its PCM.
++   */
++  struct control_dualsense_audio_t {
++    control_header_v2 header;  ///< Control message header preceding this payload.
++    std::uint16_t id;  ///< Controller identifier, always the first.
++    std::uint16_t sequence;  ///< Counts the blocks, for the client's reorder window.
++    std::uint16_t frame_count;  ///< Frames in this block.
++    std::uint8_t channels;  ///< Channels in the PCM.
++    std::uint8_t flags;  ///< 0x03: speaker and haptic channels are present.
++  };
++
++  static std::mutex dualsense_haptics_mutex;
++  static std::deque<std::array<std::uint8_t, dualsense_haptics_block_bytes>> dualsense_haptics_blocks;
++  static std::atomic<std::int64_t> dualsense_haptics_until_ms {0};
++  static std::uint16_t dualsense_haptics_sequence = 0;
++
++  static std::int64_t dualsense_now_ms() {
++    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
++  }
++
++  static std::atomic<int> dualsense_power_reduction {3};
++
++  void dualsense_set_power_reduction(int steps) {
++    dualsense_power_reduction.store(steps, std::memory_order_relaxed);
++  }
++
++  bool dualsense_haptics_wanted() {
++    return dualsense_now_ms() < dualsense_haptics_until_ms.load(std::memory_order_relaxed);
++  }
++
++  void dualsense_haptics_push(const std::uint8_t *pcm) {
++    std::lock_guard lock {dualsense_haptics_mutex};
++    // 85 ms at most: late vibration is worse than a gap.
++    if (dualsense_haptics_blocks.size() >= 4) {
++      dualsense_haptics_blocks.pop_front();
++    }
++    auto &block = dualsense_haptics_blocks.emplace_back();
++    std::copy_n(pcm, block.size(), block.begin());
++  }
++
++  static void send_dualsense_policy_ack(session_t *session, bool enabled, std::uint16_t request) {
++    control_adaptive_triggers_t plaintext {};
++    plaintext.header.type = packetTypes[IDX_SET_ADAPTIVE_TRIGGERS];
++    plaintext.header.payloadLength = sizeof(plaintext) - sizeof(control_header_v2);
++    plaintext.event_flags = 0x40;
++    plaintext.type_left = 0x42;  // 'B'
++    plaintext.type_right = 0x57;  // 'W'
++    plaintext.left[0] = 0x50;  // 'P'
++    plaintext.left[1] = 1;
++    plaintext.left[2] = enabled ? 1 : 0;
++    plaintext.left[3] = 0;
++    plaintext.left[4] = (std::uint8_t) request;
++    plaintext.left[5] = (std::uint8_t) (request >> 8);
++    plaintext.left[6] = (std::uint8_t) dualsense_power_reduction.load(std::memory_order_relaxed);  // our client's extension
++
++    std::array<std::uint8_t, sizeof(control_encrypted_t) + crypto::cipher::round_to_pkcs7_padded(sizeof(plaintext)) + crypto::cipher::tag_size + sizeof(control_header_v2)> encrypted_payload;
++    auto payload = encode_control(session, util::view(plaintext), encrypted_payload);
++    session->broadcast_ref->control_server.send(payload, session->control.peer);
++  }
++
++  static void send_dualsense_block(session_t *session, const std::array<std::uint8_t, dualsense_haptics_block_bytes> &pcm, std::uint16_t sequence) {
++    constexpr auto plaintext_size = sizeof(control_dualsense_audio_t) + dualsense_haptics_block_bytes;
++    std::array<std::uint8_t, plaintext_size> buffer {};
++    auto *plaintext = reinterpret_cast<control_dualsense_audio_t *>(buffer.data());
++    plaintext->header.type = dualsense_audio_type;
++    plaintext->header.payloadLength = plaintext_size - sizeof(control_header_v2);
++    plaintext->id = 0;
++    plaintext->sequence = sequence;
++    plaintext->frame_count = 32;
++    plaintext->channels = 2;
++    plaintext->flags = 0x04;
++    std::copy(pcm.begin(), pcm.end(), buffer.begin() + sizeof(control_dualsense_audio_t));
++
++    std::array<std::uint8_t, sizeof(control_encrypted_t) + crypto::cipher::round_to_pkcs7_padded(plaintext_size) + crypto::cipher::tag_size + sizeof(control_header_v2)> encrypted_payload;
++    auto payload = encode_control(session, util::view(buffer), encrypted_payload);
++    // Real time, and independent of the reliable sequence: the client has a reorder window for it.
++    session->broadcast_ref->control_server.send(payload, session->control.peer, ENET_PACKET_FLAG_UNSEQUENCED);
++  }
++
+   void controlBroadcastThread(control_server_t *server) {
++    server->map(0x5507, [](session_t *session, const std::string_view &payload) {
++      // The client's Bluetooth counters, as text: the phone's own log is out of reach.
++      std::string text {payload.substr(0, 240)};
++      for (auto &character : text) {
++        if (character < 0x20 || character > 0x7e) {
++          character = '?';
++        }
++      }
++      BOOST_LOG(info) << "Client Bluetooth: "sv << text;
++    });
++
++    server->map(dualsense_policy_type, [](session_t *session, const std::string_view &payload) {
++      // Version, enable, lease in ms, request id, reserved.
++      if (payload.size() < 8 || (std::uint8_t) payload[0] != 1) {
++        return;
++      }
++      const auto byte = [&](int index) {
++        return (std::uint32_t) (std::uint8_t) payload[index];
++      };
++      const bool enabled = byte(1) != 0;
++      const auto lease = byte(2) | byte(3) << 8;
++      const auto request = (std::uint16_t) (byte(4) | byte(5) << 8);
++      const bool was_wanted = dualsense_haptics_wanted();
++      dualsense_haptics_until_ms.store(enabled ? dualsense_now_ms() + lease : 0, std::memory_order_relaxed);
++      if (enabled != was_wanted) {
++        BOOST_LOG(info) << "Native DualSense haptics "sv << (enabled ? "requested"sv : "stopped"sv) << " by the client"sv;
++      }
++      send_dualsense_policy_ack(session, enabled, request);
++    });
++
+     server->map(packetTypes[IDX_PERIODIC_PING], [](session_t *session, const std::string_view &payload) {
+       BOOST_LOG(verbose) << "type [IDX_PERIODIC_PING]"sv;
+     });
+@@ -1337,6 +1457,13 @@
+     while (!shutdown_event->peek() && !broadcast_shutdown_event->peek()) {
+       bool has_session_awaiting_peer = false;
+ 
++      std::vector<std::array<std::uint8_t, dualsense_haptics_block_bytes>> due_dualsense_blocks;
++      if (dualsense_haptics_wanted()) {
++        std::lock_guard lock {dualsense_haptics_mutex};
++        due_dualsense_blocks.assign(dualsense_haptics_blocks.begin(), dualsense_haptics_blocks.end());
++        dualsense_haptics_blocks.clear();
++      }
++
+       {
+         auto lg = server->_sessions.lock();
+ 
+@@ -1390,6 +1517,11 @@
+               send_feedback_msg(session, *feedback_msg);
+             }
+ 
++            auto sequence = dualsense_haptics_sequence;
++            for (const auto &block : due_dualsense_blocks) {
++              send_dualsense_block(session, block, sequence++);
++            }
++
+             auto &hdr_queue = session->control.hdr_queue;
+             while (session->control.peer && hdr_queue->peek()) {
+               auto hdr_info = hdr_queue->pop();
+@@ -1400,6 +1532,7 @@
+ 
+           ++pos;
+         })
++        dualsense_haptics_sequence += (std::uint16_t) due_dualsense_blocks.size();
+       }
+ 
+       // Don't break until any pending sessions either expire or connect
+@@ -1409,7 +1542,7 @@
+       }
+ 
+ #ifdef __SCE__
+-      server->iterate(5ms);
++      server->iterate(dualsense_haptics_wanted() ? 2ms : 5ms);
+ #else
+       server->iterate(150ms);
+ #endif
+--- a/src/stream.h
++++ b/src/stream.h
+@@ -17,6 +17,29 @@
+ #include "video.h"
+ 
+ namespace stream {
++  constexpr std::size_t dualsense_haptics_block_bytes = 128;  ///< 21.3 ms: two 64-byte frames of a DualSense's own format, 3 kHz, 8-bit stereo.
++
++  /**
++   * @brief Whether a client asked for native DualSense haptics and its lease still runs.
++   *
++   * @return True while pushed blocks reach a client.
++   */
++  bool dualsense_haptics_wanted();
++
++  /**
++   * @brief Queue one block of native DualSense audio for the clients that asked for it.
++   *
++   * @param pcm dualsense_haptics_block_bytes of interleaved signed 8-bit samples.
++   */
++  void dualsense_haptics_push(const std::uint8_t *pcm);
++
++  /**
++   * @brief Set how far a client that asks turns a DualSense's motors down.
++   *
++   * @param steps 0 for full power to 7, an eighth of it each.
++   */
++  void dualsense_set_power_reduction(int steps);
++
+   constexpr auto VIDEO_STREAM_PORT = 9;  ///< GameStream base-port offset used for the video UDP stream.
+   constexpr auto CONTROL_PORT = 10;  ///< GameStream base-port offset used for the control channel.
+   constexpr auto AUDIO_STREAM_PORT = 11;  ///< GameStream base-port offset used for the audio UDP stream.

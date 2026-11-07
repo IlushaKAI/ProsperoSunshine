@@ -5,6 +5,7 @@
 using namespace prospero;
 
 int main() {
+    static_assert(trigger_power_steps(100) == 0 && trigger_power_steps(60) == 3 && trigger_power_steps(40) == 5 && trigger_power_steps(0) == 7);
     {
         // The knock of a shot, as Uncharted sends it: strength 7 in every zone comes out as 5, the rest of the block as it was.
         TriggerBlock knock{0x03, 0x26, 0xff, 0x03, 0xff, 0xff, 0xff, 0x3f, 0, 0, 1, 0, 0x26, 0xff, 0x03, 0xff, 0xff, 0xff, 0x3f, 0, 0, 1, 0, 0};

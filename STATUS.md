@@ -578,8 +578,14 @@ Host 0.3.4 mit dem Datensatz `0x2c0`, Angaben aus `sunshine.log`.
   und keine Motorzeile im Debug-Log, mit dem Kanal 1271 Motorzeilen. Laut Besitzer gibt es damit Vibration in Uncharted, in der Fassung mit
   Quadratwurzel aber viel zu stark, fast ein Brummen. Sie kommt bei ihm nur mit „Emulate rumble support with vibration“ im Client; warum, ist
   ungeklärt, und ob dann der DualSense oder das Telefon vibriert, ist nicht geprüft.
-- **Nicht getestet:** die letzte Fassung mit schwächeren Werten, die Einstellungen `haptic_rumble_strength` und `trigger_knock_strength`
-  in der App und ihre Wirkung im laufenden Stream.
+- **Einstellungen:** `haptic_mode`, `haptic_strength`, `trigger_knock_strength` und `trigger_force` stehen laut Besitzer in App und Webseite, und
+  die Stärke wirkte im laufenden Stream. `trigger_force` änderte laut Besitzer nichts Deutliches. Die schwächere Rumble-Fassung
+  (linear, höchstens 128 von 255) ist nach dem Umbau nicht mehr beurteilt worden.
+- **HD nicht fertig:** Mit dem Patch 0022 und dem Client `prospero-ps5` kam die Wellenform an. Mit zwei Rahmen je Bericht (Client v8, Weg über
+  48 kHz) fand der Besitzer die Vibration deutlicher und abgestuft, aber mit Mikroaussetzern und bei Dauervibration im Auto wachsender
+  Verzögerung. Client v9 mit Laufzeitmessung und v10 mit dem direkten 3-kHz-Weg gaben keine Vibration mehr, auch nicht bei 200 %, obwohl
+  v10 47 Berichte je Sekunde ohne Fehler, Lücken oder Verluste meldete. Ursache nicht gefunden. Der Besitzer hat die Arbeit daran beendet, die
+  Konsole steht auf `rumble`. Wer weitermacht, beginnt beim Stand von v8.
 - **Vibration in einem PS4-Titel:** Laut Besitzer einfache Vibration in EA Sports UFC 3 am selben DualSense, an einem 8BitDo Ultimate 2C
   Wireless dagegen keine. Nicht im Log gemessen.
 

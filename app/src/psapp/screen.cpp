@@ -41,10 +41,11 @@ const Rect kPairedDevices{1220.0f, 740.0f, 604.0f, 172.0f};
 constexpr int kReportVisible = 19; // lines of the report on screen
 constexpr float kReportLine = 26.0f;
 
-const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::plug, Icon::lock, Icon::globe, Icon::sliders, Icon::home};
-// option_specs(): two rows of four, then a row with the Experimental switches
-constexpr int kRowLength = 4;
-constexpr int kFirstSwitch = 8;
+const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::plug, Icon::lock, Icon::globe, Icon::sliders, Icon::home,
+                             Icon::sliders, Icon::sliders, Icon::sliders, Icon::sliders};
+// option_specs(): two rows of six, then a row with the Experimental switches
+constexpr int kRowLength = 6;
+constexpr int kFirstSwitch = 12;
 // The Experimental row: the firmware switches, then surround sound, which no firmware check locks.
 constexpr int kSwitchTiles = PS_EXP_SWITCH_COUNT + 1;
 constexpr int kTiles = kFirstSwitch + kSwitchTiles;
@@ -192,7 +193,7 @@ Rect Screen::tile_rect(int index) const
         const float width = (1728.0f - 20.0f * static_cast<float>(kSwitchTiles - 1)) / static_cast<float>(kSwitchTiles);
         return {96.0f + static_cast<float>(index - kFirstSwitch) * (width + 20.0f), 594.0f, width, 124.0f};
     }
-    constexpr float kNarrow = (1728.0f - 3.0f * 24.0f) / 4.0f;
+    constexpr float kNarrow = (1728.0f - 5.0f * 24.0f) / 6.0f;
     const int row = index / kRowLength, col = index % kRowLength;
     return {96.0f + static_cast<float>(col) * (kNarrow + 24.0f), 276.0f + 138.0f * static_cast<float>(row), kNarrow, 124.0f};
 }
@@ -480,17 +481,18 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
             // Up and down go to the nearest tile: the two rows of four line up; the switches' row has its own count.
             const int last_switch = kSwitchTiles - 1;
             const int to_switch = kFirstSwitch + (col * last_switch + (kRowLength - 1) / 2) / (kRowLength - 1);
-            const int from_switch = kRowLength + (col * (kRowLength - 1) + last_switch / 2) / std::max(last_switch, 1);
+            const int from_switch = std::min(kFirstSwitch - 1, kRowLength + (col * (kRowLength - 1) + last_switch / 2) / std::max(last_switch, 1));
+            const int last_in_row = switches ? last_switch : second ? kFirstSwitch - kRowLength - 1 : kRowLength - 1;
             if (input.nav == Direction::left)
                 next = col > 0 ? tile_ - 1 : -1;
             else if (input.nav == Direction::right)
-                next = col < (switches ? last_switch : kRowLength - 1) ? tile_ + 1 : -1;
+                next = col < last_in_row ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
                 next = switches ? from_switch : second ? tile_ - kRowLength : -1;
             else
                 next = switches ? kTiles + (col == last_switch ? 3 : std::min(col, 2))
                        : second ? std::min(to_switch, kFirstSwitch + last_switch)
-                                : tile_ + kRowLength;
+                                : std::min(tile_ + kRowLength, kFirstSwitch - 1);
         }
         else
         {
@@ -1789,9 +1791,9 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
             list.glow(base, 24.0f, 26.0f, kAccent.with_alpha(0.28f * f));
         glass_card(list, glass, base, 24.0f, f);
         // The switches' row is narrower: the same parts closer together, with the switch on the value's line.
-        const bool narrow = i >= kFirstSwitch;
+        const bool narrow = true;
         const float text_x = base.x + (narrow ? 62.0f : 90.0f);
-        icons::draw(list, narrow ? Icon::sliders : kOptionIcons[i], base.x + (narrow ? 34.0f : 46.0f), base.cy(), narrow ? 30.0f : 34.0f,
+        icons::draw(list, i >= kFirstSwitch ? Icon::sliders : kOptionIcons[i], base.x + (narrow ? 34.0f : 46.0f), base.cy(), narrow ? 30.0f : 34.0f,
                     inert ? kFaint : kAccent);
         hui::ui::text(list, fonts_.semibold, narrow ? shorten(fonts_.semibold, spec.label, 26.0f, base.w - 80.0f) : std::string(spec.label),
                       text_x, base.y + 52.0f, narrow ? 26.0f : 30.0f, inert ? kMuted : kInk);

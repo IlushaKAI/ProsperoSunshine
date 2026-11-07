@@ -3,7 +3,8 @@
 ![ProsperoSunshine](docs/images/banner.jpg)
 
 > **This is a fork for firmware 9.60**, on top of [ProsperoSunshine](https://github.com/Darkatek7/ProsperoSunshine) 0.4.0. It adds
-> capture on 9.60, lets the app work where a title has no `/data`, and passes the vibration of PS5 games on as rumble (experimental).
+> capture on 9.60, lets the app work where a title has no `/data`, and passes the vibration of PS5 games on as rumble (experimental, off by
+> default). HD vibration is in here too, but unfinished.
 > What was tested is in [CHANGELOG.md](CHANGELOG.md) and [STATUS.md](STATUS.md). The Android client used for triggers on a DualSense over
 > Bluetooth is [this fork](https://github.com/IlushaKAI/Artemis-Extended-Native-Wireless-DualSense-Features/tree/prospero-ps5). Problems on
 > this fork belong here, not in the original project.

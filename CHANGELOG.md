@@ -5,9 +5,13 @@
 ### Added
 
 - **Vibration of PS5 games, as rumble (experimental).** PS5 games send their vibration through a haptic channel and leave the classic
-  motors alone, so Moonlight got nothing. With **PS5 game vibration** on, the host reads that channel during a stream and passes its
-  level on as rumble. It is a rough match for a DualSense on the console, since Moonlight has only two motor values. **Vibration
-  strength** and **Trigger knock strength** adjust it, within seconds of saving and without a restart. Tested on 9.60 only.
+  motors alone, so Moonlight got nothing. **Vibration** in the app now reads that channel during a stream. **Rumble** passes its level
+  on as two motor values, a rough match for a DualSense on the console. Off by default. Tested on 9.60 only.
+- **Trigger knock (%)** turns down the knock of effect 0x26, which Uncharted sends when firing. **Vibration (%)** sets the strength.
+  Both apply within seconds of saving, without a restart.
+- **HD in Vibration is unfinished, don't expect it to work.** It sends the waveform to a patched Artemis client for a DualSense over
+  Bluetooth. One build gave real HD vibration with a delay that grew; later ones gave none, for a reason not found (`docs/re/haptics.md`).
+- **Trigger force (%)** asks that client for less motor power on the DualSense. The tester felt no clear change.
 
 ### Fixed
 

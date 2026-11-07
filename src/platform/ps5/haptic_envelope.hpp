@@ -9,8 +9,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace prospero {
+
+// A packet of the channel is 2048 bytes, but only its first 64 frames of float stereo are samples: 3 kHz at 47 packets a second,
+// the rate of a DualSense's own Bluetooth haptics. The rest is padding.
+inline constexpr std::size_t kHapticFrames = 64;
 
 struct HapticLevels {
     float low = 0, high = 0;  // peak of each part, 0 to 1
@@ -34,9 +39,19 @@ public:
     }
 
 private:
-    static constexpr float kLowPass = 0.061f;  // about 120 Hz at the channel's 12 kHz
+    static constexpr float kLowPass = 0.222f;  // about 120 Hz at the channel's 3 kHz
     float low_ = 0;
 };
+
+// One packet of the channel in the format of a DualSense's Bluetooth haptics: 3 kHz like the channel, signed 8-bit, left and right
+// interleaved, two frames of 64 bytes. gain 1 is what the console would play.
+inline constexpr std::size_t kHapticBlockBytes = 2 * kHapticFrames;
+inline void haptic_block(const float *samples, float gain, std::uint8_t *block) {
+    for (std::size_t i = 0; i < 2 * kHapticFrames; ++i) {
+        const float sample = std::isfinite(samples[i]) ? samples[i] * gain : 0.0f;
+        block[i] = static_cast<std::uint8_t>(static_cast<std::int8_t>(std::clamp(sample, -1.0f, 1.0f) * 127.0f));
+    }
+}
 
 // feed() from the reader for every packet, tick() every 10 ms from the pad thread: rises at once, gone after about 60 ms. Only what
 // stands out of the last quarter second counts, so a lasting sound doesn't become a hum. Levels are linear and capped at half of
