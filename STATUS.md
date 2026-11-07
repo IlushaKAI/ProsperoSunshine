@@ -568,6 +568,10 @@ Host 0.3.4 mit dem Datensatz `0x2c0`, Angaben aus `sunshine.log`.
 - **Dritter Absturz:** Die Konsole ging aus, als `host_restart.elf` gesendet wurde, etwa 2 Minuten nachdem Uncharted in derselben Sitzung
   geschlossen worden war. Die hochgeladenen Dateien hatten schon die richtigen Prüfsummen, `host_restart.log` blieb unverändert, und das
   Hostlog hat keine Zeile zum Beenden. Nach dem Neustart lief alles. Ursache ungeklärt.
+- **Auf 0.4.1 (Fork):** Der Host meldet 0.4.1 auf 9.60, Uncharted startete und lief aus Artemis für Android mit HEVC, Ton und Controller, in
+  zwei kurzen Sitzungen von 9 und 28 s. Das ist nur eine Kurzprobe.
+- **Vierter Absturz:** Die Konsole ging bei „Restart host“ aus. Im Log lief da noch ein Stream, laut Besitzer von Moonlight auf dem PC, mit offenem
+  Haptik-Kanal, und es gibt keine Zeile zum Beenden. Ursache ungeklärt.
 - **409 bei offenem Titel:** „Not starting PPSA05684: CUSA06534 is still open“, der Client meldete Fehler 409. „PS5 Screen“ startete,
   das Spiel ließ sich dann an der Konsole öffnen.
 - **DualSense am Telefon:** Laut Besitzer spürbare Trigger-Effekte in Uncharted, DualSense per Bluetooth an einem Android-17-Telefon,
